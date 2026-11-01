@@ -167,6 +167,11 @@ span.f{display:inline;min-height:0}
 .toke{background:#D9EAD3;color:#38761D}
 .tokr{background:#EDEDED;color:#595959}
 .tokopt{color:#8C8C8C}
+.camv{cursor:copy;border-radius:.6mm}
+#pages.edit .camv{border-bottom:.5pt dotted #9AA7BD}
+.camv:hover{background:#DCE5F4}
+.cambox{display:grid;grid-template-columns:auto repeat(3,minmax(0,1fr));gap:6px 8px;align-items:center;font-size:11px;color:var(--muted)}
+.mdl textarea{background:var(--panel2);border:1px solid var(--line);border-radius:4px;padding:6px 7px;font:inherit;font-size:11px;min-height:54px;resize:vertical;color:var(--fg)}
 .walkcat{font:inherit;font-size:8pt;margin-left:2mm;border:.5pt solid #9AA7BD;background:#F7F9FC;color:#2F3B52;border-radius:2px;vertical-align:middle}
 .chart.fc{background:#fff}
 .edit .chart.fc{cursor:pointer}
@@ -435,7 +440,7 @@ const E={
   bg:()=>!doc.ctx.bg.some(b=>hasR(b.text)),
   chart:c=>c.mode==="image"?!hasI(c.img):!c.nodes.some(n=>n.type!=="start"&&n.type!=="end"),
   guide:g=>!(hasR(g.text)||hasI(g.img)),
-  po:r=>!(hasI(r.po)||hasI(r.before)||hasI(r.after)||hasR(r.reason)||hasR(r.loc)),
+  po:r=>!(hasI(r.po)||hasI(r.before)||hasI(r.after)||hasR(r.reason)||hasR(r.loc)||r.cam),
 };
 
 /* ---------------- render: helpers ---------------- */
@@ -685,7 +690,33 @@ R.appA=(p)=>{const cols="13% 7% 14% 23% 23% 20%";const hd=["Version","Section","
       :h("div",{class:"tr","data-d":"tr"},["[Ver.]","[x.x]","[Issue # / Feedback]","[Before]","[After]","[Change Notes]"].map(x=>h("div",{class:"td","data-d":"td"},T("small",h("span",{class:"ph"},x))))))];
 };
 const poDate=s=>s?s.replace(/\./g,"/"):"N/A";
-R.appB=(p)=>{const cols="12% 21% 21% 21% 14% 11%";const hd=[["Version",h("br"),"PO Time",h("br"),"Finish Time"],"PO Image","Before","After","Reason","Location"];
+/* PO camera: level file, location XYZ and rotation XYZ (Unreal details panel: X=Roll, Y=Pitch, Z=Yaw); clicking a value copies it in Unreal's paste format */
+const f6=v=>(parseFloat(v)||0).toFixed(6),fN=v=>String(+(parseFloat(v)||0).toFixed(2));
+const ueLoc=c=>`(X=${f6(c.loc[0])},Y=${f6(c.loc[1])},Z=${f6(c.loc[2])})`;
+const ueRot=c=>`(Pitch=${f6(c.rot[1])},Yaw=${f6(c.rot[2])},Roll=${f6(c.rot[0])})`;
+function camBlock(r){const c=r.cam;if(!c)return null;const v=(a,cp,t)=>h("span",{class:"camv","data-copy":cp,title:`Click to copy ${t} for pasting into Unreal`},a.map(fN).join(", "));
+  return [has(c.level)?T("small",[L1("Level: "),c.level]):null,T("small",[L1("Loc: "),v(c.loc,ueLoc(c),"Location")]),T("small",[L1("Rot: "),v(c.rot,ueRot(c),"Rotation")])]}
+/** reads Location and Rotation together from pasted text: Unreal copies such as (X=..,Y=..,Z=..) and (Pitch=..,Yaw=..,Roll=..), or six plain numbers */
+function parseCam(s){const N="(-?\\d+(?:\\.\\d+)?(?:e[-+]?\\d+)?)",out={};
+  const xyz=[...s.matchAll(new RegExp(`X=\\s*${N}[\\s,;]*Y=\\s*${N}[\\s,;]*Z=\\s*${N}`,"gi"))].map(m=>[m[1],m[2],m[3]]);
+  const pyr=s.match(new RegExp(`P(?:itch)?=\\s*${N}[\\s,;]*Y(?:aw)?=\\s*${N}[\\s,;]*R(?:oll)?=\\s*${N}`,"i"));
+  if(xyz[0])out.loc=xyz[0];if(pyr)out.rot=[pyr[3],pyr[1],pyr[2]];else if(xyz[1])out.rot=xyz[1];
+  if(!out.loc&&!out.rot){const n=s.match(new RegExp(N,"gi"))||[];if(n.length>=3)out.loc=n.slice(0,3);if(n.length>=6)out.rot=n.slice(3,6)}
+  return out}
+function camDialog(id){const r=doc.po.find(x=>x.id===id);if(!r)return;
+  const last=doc.po.find(x=>x.cam&&has(x.cam.level));const c=r.cam||{level:last?last.cam.level:"",loc:["","",""],rot:["","",""]};
+  const lv=h("input",{value:c.level,placeholder:"/Game/Maps/L_Level"});
+  const ins=k=>c[k].map((v,i)=>h("input",{value:v,inputmode:"decimal","aria-label":`${k==="loc"?"Location":"Rotation"} ${"XYZ"[i]}`,placeholder:"XYZ"[i]}));const L=ins("loc"),Rt=ins("rot");
+  const msg=h("p",{class:"hint"},"Paste Location and Rotation together, e.g. (X=1200,Y=-350,Z=180) (Pitch=-10,Yaw=90,Roll=0), or six numbers.");
+  const paste=h("textarea",{placeholder:"Paste from Unreal",oninput:e=>{const p=parseCam(e.target.value);if(p.loc)p.loc.forEach((v,i)=>L[i].value=v);if(p.rot)p.rot.forEach((v,i)=>Rt[i].value=v);
+    msg.textContent=p.loc||p.rot?`Read ${[p.loc?"Location":null,p.rot?"Rotation":null].filter(Boolean).join(" and ")}.`:"No coordinates found in that text."}});
+  modal("PO camera",[h("div",{class:"form"},h("label",null,"Level file",lv)),h("div",{class:"form"},h("label",null,"Paste Location + Rotation",paste)),msg,
+    h("div",{class:"cambox"},h("span"),...["X","Y","Z"].map(x=>h("span",null,x)),h("span",null,"Location"),...L,h("span",null,"Rotation (X=Roll, Y=Pitch, Z=Yaw)"),...Rt)],
+    [...(r.cam?[{label:"Remove camera",run:()=>{delete r.cam;autosave();render()}}]:[]),{label:"Cancel"},
+     {label:r.cam?"Update":"Insert",pri:true,run:()=>{r.cam={level:lv.value.trim(),loc:L.map(i=>i.value.trim()),rot:Rt.map(i=>i.value.trim())};autosave();render()}}]);
+}
+async function copyText(t){try{await navigator.clipboard.writeText(t);return true}catch(_){const a=h("textarea",{style:"position:fixed;opacity:0"});a.value=t;document.body.append(a);a.select();const ok=document.execCommand("copy");a.remove();return ok}}
+R.appB=(p)=>{const cols="12% 19% 19% 19% 14% 17%";const hd=[["Version",h("br"),"PO Time",h("br"),"Finish Time"],"PO Image","Before","After","Reason","Location"];
   const cell=(x)=>h("div",{class:"td","data-d":"td"},x);
   return [p.first?LR(T("h1","Appendix B - PO List"),isEdit()?h("div",{class:"addbar"},h("button",{"data-act":"po-add"},"+ Add PO entry")):h("div")):null,
     p.first?T("cap","Paint-over review entries. Newest first."):null,
@@ -694,7 +725,7 @@ R.appB=(p)=>{const cols="12% 21% 21% 21% 14% 11%";const hd=[["Version",h("br"),"
       p.rows.length?p.rows.map(r=>{const b="po."+r.id;return h("div",{class:"tr","data-d":"tr"},
         cell([T("small",r.ver),T("small",poDate(r.date)),T("small",poDate(r.fin)),ICTL(["po-rm","Remove",r.id])]),
         cell(I(b+".po","PO Image","16/9","contain")),cell(I(b+".before","Before Screenshot","16/9","contain")),cell(I(b+".after","After Screenshot","16/9","contain")),
-        cell(F(b+".reason","[Reason]",{rich:true,s:"small"})),cell(F(b+".loc","[Spatial location / grid ref]",{rich:true,s:"small"})))})
+        cell(F(b+".reason","[Reason]",{rich:true,s:"small"})),cell([F(b+".loc","[Spatial location / grid ref]",{rich:true,s:"small"}),...(camBlock(r)||[]),ICTL(["po-cam",r.cam?"Edit camera":"+ Camera",r.id])]))})
       :h("div",{class:"tr","data-d":"tr"},cell(T("small",h("span",{class:"ph"},"[Ver.]"))),
         ...["PO Image","Before Screenshot","After Screenshot"].map(x=>cell(h("div",{class:"slot thumb","data-x":"i","data-label":x,style:"aspect-ratio:16/9"},h("span",{class:"lab"},`[${x}]`)))),
         cell(T("small",h("span",{class:"ph"},"[Reason]"))),cell(T("small",h("span",{class:"ph"},"[Location]")))))];
@@ -1149,7 +1180,9 @@ pages.addEventListener("paste",e=>{
   const f=e.target.closest&&e.target.closest(".f[data-path]");if(f){e.preventDefault();const t=e.clipboardData.getData("text/plain");document.execCommand("insertText",false,t)}});
 pages.addEventListener("focusin",e=>{const f=e.target.closest(".f.rich[data-path]");if(f&&f.dataset.tok&&!f.dataset.raw){f.dataset.raw="1";f.innerHTML=getP(doc,f.dataset.path)||""}if(f)showRtb(f);else hideRtb()});
 let pickPath=null;
-pages.addEventListener("click",e=>{if(PREVIEW)return;
+pages.addEventListener("click",e=>{
+  const cv=e.target.closest(".camv[data-copy]");if(cv){e.preventDefault();copyText(cv.dataset.copy).then(ok=>toast(ok?"Copied "+cv.dataset.copy:"Could not copy to the clipboard"));return}
+  if(PREVIEW)return;
   const fc=e.target.closest("svg.fc[data-chart]");if(fc&&!e.target.closest("[data-act]")){chartEditor(fc.dataset.chart);return}
   const b=e.target.closest("[data-act]");
   if(b&&b.tagName==="BUTTON"){e.preventDefault();e.stopPropagation();act(b.dataset.act,b.dataset.id,b);return}
@@ -1187,6 +1220,7 @@ function act(a,id,el){
     case "plan-rm":doc.plans.splice(ix(doc.plans),1);break;
     case "po-add":doc.po.unshift({id:uid(),ver:verStr(doc.state)||"Draft "+today(),date:today(),po:"",before:"",after:"",reason:"",loc:""});break;
     case "po-rm":doc.po.splice(ix(doc.po),1);break;
+    case "po-cam":camDialog(id);return;
     case "guide-add":doc.flow.guide.push(newGuide());break;
     case "guide-up":mv(doc.flow.guide,ix(doc.flow.guide),-1);break;
     case "guide-down":mv(doc.flow.guide,ix(doc.flow.guide),1);break;
@@ -1286,6 +1320,7 @@ const HELP=[
   ["!(30)","A 30 s rest; intensity decays during it, shown as [Rest: 30s]."],
   ["!(e1)","Event e1, shown as [Event: name (time it happens)]."],
   ["? action","An action starting with ? (after its number) is optional: shown as a grey [Option] and left out of every statistic."],
+  ["PO camera","+ Camera on a PO entry stores the level file, Location and Rotation; paste both from Unreal at once. Click Loc or Rot to copy it for pasting into Unreal."],
   ["Characters","Three to a row; a second row shares the page while it fits, otherwise it starts a new page."],
   ["Battle intensity","A battle sets intensity to its unit's estimate, events add their change, other time decays it (default -2 every 30 s)."],
   ["Battle time","Each subsection uses its shortest duration; time not covered by battles or rests counts as exploration and decays."],
