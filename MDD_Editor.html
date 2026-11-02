@@ -88,6 +88,9 @@ span.f{display:inline;min-height:0}
 .half{flex:1 1 0;display:flex;flex-direction:column;gap:2.2mm}
 .grid{display:grid;gap:2mm}
 .hr{height:0;border-top:.75pt solid var(--rule);margin:1mm 0}
+/* side-by-side blocks: a rule three quarters of the row's height sits in the middle of each gap */
+.row.vs{position:relative}.vsep{position:absolute;top:12.5%;height:75%;width:0;border-left:.5pt solid var(--rule);pointer-events:none}
+.jus{text-align:justify;hyphens:auto;-webkit-hyphens:auto}
 .slot{position:relative;background:var(--slot) center/cover no-repeat;border:.5pt solid var(--slotline);box-sizing:border-box;display:flex;align-items:center;justify-content:center;text-align:center;overflow:hidden;width:100%}
 .slot.has{background-color:#fff;border-color:transparent}
 .slot .lab{font-size:6.5pt;color:var(--ph);padding:1mm;line-height:1.25}
@@ -431,7 +434,7 @@ function richParas(root){
   const paras=[];let cur;const nl=(list=null,n=0)=>{cur={runs:[],list,n};paras.push(cur)};nl();
   const BLK=new Set(["DIV","P","LI"]);
   const walk=(node,f)=>{for(const c of node.childNodes){
-    if(c.nodeType===3){const t=c.nodeValue.replace(/ /g," ").replace(/[\t\r\n]+/g," ");if(t)cur.runs.push({t,...f});continue}
+    if(c.nodeType===3){const t=c.nodeValue.replace(/\u00AD/g,"").replace(/ /g," ").replace(/[\t\r\n]+/g," ");if(t)cur.runs.push({t,...f});continue}
     if(c.nodeType!==1||c.classList.contains("ctl")||c.classList.contains("ictl")||c.tagName==="SELECT"||c.tagName==="BUTTON")continue;
     const g={...f},T=c.tagName;
     if(T==="B"||T==="STRONG"||c.classList.contains("lbl"))g.b=true;
@@ -480,6 +483,16 @@ const COL=(...k)=>h("div",{class:"col","data-d":"col"},...k);
 const HR=()=>h("div",{class:"hr","data-x":"r"});
 function GRID(n,...k){return h("div",{class:"grid","data-d":"grid","data-cols":n,style:`grid-template-columns:repeat(${n},1fr)`},...k)}
 const filled=(v,rich)=>rich?hasR(v):has(v);
+/* soft hyphens for justified text, so lines break inside long words with a "-" in every browser (CSS hyphens:auto needs a
+   dictionary many browsers lack). Breaks fall between two consonants (VC-CV) or before a consonant that starts a syllable (V-CV),
+   keeping digraphs whole and at least three letters on each side. Display only: the stored text is never touched. */
+const HY_V=/[aeiouyàâäéèêëîïôöûüÿ]/i,HY_KEEP=/^(ch|sh|th|ph|wh|gh|ck|qu|ng)$/i;
+function hyWord(w){if(w.length<6||/^[A-Z]+$/.test(w))return w;const L=w.toLowerCase();let out="",last=0;
+  for(let i=3;i<=w.length-3;i++){const a=L[i-1],b=L[i],V=c=>HY_V.test(c);if(i-last<2&&last)continue;
+    const vccv=!V(a)&&!V(b)&&V(L[i-2])&&V(L[i+1])&&!HY_KEEP.test(a+b),vcv=V(a)&&!V(b)&&V(L[i+1])&&!HY_KEEP.test(b+L[i+1]);
+    if((vccv||vcv)&&!/^[^aeiouy](e|es|ed|er|ely)$/.test(L.slice(i))){out+=w.slice(last,i)+"\u00AD";last=i}}  // no break before a silent-e ending
+  return out+w.slice(last)}
+function softHyphens(el){const tw=document.createTreeWalker(el,NodeFilter.SHOW_TEXT);for(let n;(n=tw.nextNode());)n.data=n.data.replace(/[A-Za-z\u00C0-\u024F]{6,}/g,hyWord)}
 /** editable text field. opts: s(style) rich inline red */
 function F(path,ph,o={}){
   const v=getP(doc,path)||"";if(HIDE&&!filled(v,o.rich))return null;
@@ -491,6 +504,7 @@ function F(path,ph,o={}){
   if(isEdit()){el.contentEditable="true";el.dataset.ph=ph;el.spellcheck=true;if(o.rich)el.innerHTML=disp;else el.textContent=v}
   else if(filled(v,o.rich)){if(o.rich)el.innerHTML=disp;else el.textContent=v}
   else el.append(h("span",{class:"ph"+(o.red?" red":"")},ph));
+  if(!isEdit()&&/\bjus\b/.test(o.cls||"")&&filled(v,o.rich))softHyphens(el);
   return el;
 }
 /** image slot (shows the edited preview; exports use the full-resolution original) */
@@ -506,6 +520,9 @@ function I(path,label,ratio="16/9",fit="cover"){
 }
 const ICTL=(...btns)=>isEdit()?h("span",{class:"ictl"},...btns.filter(Boolean).map(([a,t,d])=>h("button",{"data-act":a,"data-id":d||"",title:t},t))):null;
 const nn=a=>a.filter(Boolean);
+/** a row of n equal blocks with a 3/4-height rule in each gap between two filled neighbours (filled: true per cell) */
+function VROW(n,cells,filled){const r=ROW(`repeat(${n},1fr)`,...cells);r.classList.add("vs");const g=5;  // mm, .row column-gap
+  for(let j=1;j<n;j++)if(filled[j-1]&&filled[j])r.append(h("div",{class:"vsep","data-x":"v","data-j":j,style:`left:calc(${j*100/n}% + ${((2*j-n)*g/(2*n)).toFixed(3)}mm)`}));return r}
 /** stacked halves: each takes 1:1 of the remaining page height, a fuller one pushes into the other, overflow is flagged */
 const SPLIT=(...parts)=>{const ps=parts.filter(x=>x&&nn(x.flat()).length);if(!ps.length)return null;return h("div",{class:"split"},ps.map(k=>h("div",{class:"half"},...nn(k.flat()))))};
 
@@ -622,11 +639,11 @@ R.cover=(p,L)=>{const m=doc.meta;const v=verLabel();
   const path=coverCampaign();  // e.g. 10.5.1 Level Name (indices top -> down, then level index)
   const side=(lbl,val,ph,right)=>{if(HIDE&&!val)return null;return T("meta",[L1(lbl),PH(val,ph)],right?{class:"r"}:{})};
   const ids=doc.cover.imgs.map((_,i)=>i);const shown=HIDE?ids.filter(i=>hasI(doc.cover.imgs[i])):(!isEdit()&&ids.some(i=>hasI(doc.cover.imgs[i]))?ids.filter(i=>hasI(doc.cover.imgs[i])):ids);
-  const ov=[["Brief (Who / What / When / Where / How)","cover.brief","[Who is the player, what must they achieve, when and where it happens, how they achieve it]"],
-    ["Fail Conditions","cover.fail","[Every in-level fail condition, e.g. player death, timer expiry, escort lost]"]];
-  const ovEls=[];for(const [t,pth,ph] of ov){const f=F(pth,ph,{rich:true});if(f)ovEls.push(isEdit()?T("h3",t):null,f)}
-  const d1=F("cover.prereq","[Prerequisite levels and carried-over state]",{rich:true}),d2=F("cover.progress","[In-level progression dependencies: keys, abilities, story flags]",{rich:true});
-  if(d1||d2)ovEls.push(isEdit()?T("h3","Dependencies"):null,d1,d2);
+  // each hint names what the box is for, then an example
+  const ovEls=nn([["cover.brief","[Brief (Who / What / When / Where / How) e.g. The player, as a hunted hacker, must reach the safe house across the city before dawn]"],
+    ["cover.fail","[Fail Conditions e.g. Player death, timer expiry, escort lost]"],
+    ["cover.prereq","[Prerequisite Levels e.g. 1.2 Night Market cleared; carries over the stolen key card]"],
+    ["cover.progress","[Progression Dependencies e.g. The lift opens only after the generator is restored]"]].map(([pth,ph])=>F(pth,ph,{rich:true})));
   return [
     (HIDE&&!has(m.game))?null:T("title",PH(m.game,"[Game Name]")),
     LR(side("Campaign Name: ",path,"[x.x.x] [Level Name]"),side("Level Name: ",m.level,"[Level Name]",true)),
@@ -653,8 +670,8 @@ function worldBlock(w){const b="ctx.worlds."+w.id,ed=isEdit(),n=doc.ctx.worlds.l
   const tl=F(b+".title","[Subtitle]",{s:"h4",inline:ed});
   const head=ed?h("div",{"data-x":"t","data-s":"h4"},tl,sel,ICTL(n>1?["world-up","↑",w.id]:null,n>1?["world-down","↓",w.id]:null,["world-add","+ Add block",w.id],n>1?["world-rm","Remove",w.id]:null)):tl;
   const body=w.kind==="pic"?figGrid(b+".imgs",b+".caps",w.imgs,w.caps,"World Ref",62)
-    :w.kind==="list"?F(b+".text","[Referenced documents, one per item: title, owner, version or link]",{rich:true,cls:"autolist"})
-    :F(b+".text","[Location, era, factions, rules of the world relevant to this level]",{rich:true});
+    :w.kind==="list"?F(b+".text","[Referenced documents, one per item: title, owner, version or link]",{rich:true,cls:"autolist jus"})
+    :F(b+".text","[Location, era, factions, rules of the world relevant to this level]",{rich:true,cls:"jus"});
   return COL(head,body)}
 R.ctx1=(p)=>{const out=[p.h1?T("h1","Context"):null,p.first?T("h2","Themes and Background"):null];
   const half=kids=>h("div",{class:"half"},...nn(kids.flat()));const parts=[];
@@ -663,7 +680,7 @@ R.ctx1=(p)=>{const out=[p.h1?T("h1","Context"):null,p.first?T("h2","Themes and B
   // one sentence on the world as a whole sits above the first row of blocks
   const lead=()=>F("ctx.worldLead","[One sentence on the world as a whole, e.g. a 21st-century fictional world closely resembling our own]",{s:"lead"});
   p.rows.forEach((rw,i)=>parts.push(half([i===0?T("h3","World Setting"):null,p.first&&i===0?lead():null,
-    !rw.length?null:rw[0].kind==="list"?worldBlock(rw[0]):ROW("1fr 1fr",worldBlock(rw[0]),rw[1]?worldBlock(rw[1]):COL())])));
+    !rw.length?null:rw[0].kind==="list"?worldBlock(rw[0]):VROW(2,[worldBlock(rw[0]),rw[1]?worldBlock(rw[1]):COL()],[true,!!rw[1]])])));
   if(parts.length===1)parts.push(half([]));  // a lone row keeps to the top half
   out.push(parts.length?h("div",{class:"split"},parts):null);return out};
 function bgHead(i,b){const k=BGK[b.kind]||BGK.campaign;const red=b.kind==="this";
@@ -674,10 +691,10 @@ R.ctx2=(p)=>{const cols=doc.ctx.bg.map((b,i)=>({b,i})).filter(x=>!HIDE||hasR(x.b
   return [p.h1?T("h1","Context"):null,p.h2?T("h2","Themes and Background"):null,T("h3","Background"),
     isEdit()?T("cap","Campaign story and the levels around this one. Content of this level is marked in red. Choose what each column holds from its heading."):null,
     ROW(`repeat(${Math.max(1,cols.length)},1fr)`,...cols.map(({b,i})=>COL(bgHead(i,b),F(`ctx.bg.${i}.text`,(BGK[b.kind]||BGK.campaign).ph,{rich:true,red:b.kind==="this",cls:b.kind==="this"?"red":""}))))]};
-R.chars=(p)=>{const row=items=>ROW("1fr 1fr 1fr",...[0,1,2].map(j=>{const c=items[j];if(!c)return COL();const b="chars."+c.id;
+R.chars=(p)=>{const row=items=>VROW(3,[0,1,2].map(j=>{const c=items[j];if(!c)return COL();const b="chars."+c.id;
   const role=F(b+".role","[Role in this level]",{inline:true});const nm=F(b+".name","[Name]",{inline:true});
   return COL(nm||isEdit()?h("div",{"data-x":"t","data-s":"h3"},nm,ICTL(["char-rm","Remove",c.id])):null,I(b+".img","Character Art 16:9"),
-    role?T("body",[L1("Role: "),role]):null,F(b+".text","[Background, motivation, relationship to the player, key lines]",{rich:true}))}));
+    role?T("body",[L1("Role: "),role]):null,F(b+".text","[Background, motivation, relationship to the player, key lines]",{rich:true,cls:"jus"}))}),[0,1,2].map(j=>!!items[j]));
   return [p.h1?T("h1","Context"):null,p.first?T("h2","Characters"):null,p.rows.length>1?SPLIT(...p.rows.map(r=>[row(r)])):row(p.rows[0]),(isEdit()&&p.last)?h("div",{class:"addbar"},h("button",{"data-act":"char-add"},"+ Add character")):null];
 };
 /** export with empty image slots hidden: the images left share the right side, sized to keep the usual block height */
@@ -1258,7 +1275,11 @@ function applyZoom(){const pages=$("#pages");const vw=$("#view").clientWidth-36;
 function render(){const sc=$("#view").scrollTop;const pg=$("#pages");pg.classList.toggle("edit",!PREVIEW);pg.classList.toggle("preview",PREVIEW);pg.classList.toggle("chrome",PREVIEW);
   renderInto(pg,PREVIEW?"export":"edit");applyZoom();$("#view").scrollTop=sc;outline();status();checkOverflow()}
 const overflows=pg=>{const b=$(".body",pg);return b.scrollHeight>b.clientHeight+2};
-function checkOverflow(){$$("#pages .page").forEach(pg=>pg.classList.toggle("overflow",overflows(pg)))}
+function checkOverflow(){$$("#pages .page").forEach(pg=>{$$(".f[data-fit]",pg).forEach(f=>{f.style.maxHeight="";f.style.overflowY="";delete f.dataset.fit});
+  const o=overflows(pg);pg.classList.toggle("overflow",o);if(!o||PREVIEW)return;
+  // text boxes running past the bottom of the page scroll inside it, so the end of the text can still be read and edited
+  const bb=$(".body",pg).getBoundingClientRect().bottom;for(const f of $$(".f[data-path]",pg)){const r=f.getBoundingClientRect(),k=r.height/(f.offsetHeight||1);
+    if(r.bottom>bb+1&&bb-r.top>12*k){f.style.maxHeight=Math.floor((bb-r.top)/k)+"px";f.style.overflowY="auto";f.dataset.fit="1"}}})}
 function outline(){const nav=$("#outline");nav.textContent="";CURL.toc.forEach(e=>{const a=h("a",{href:"#pg"+e.p,class:"l"+e.l},h("span",null,`${e.num} ${e.t||e.ph||""}`),h("span",null,String(e.p)));
   a.addEventListener("click",ev=>{ev.preventDefault();const el=$("#pg"+e.p);if(el)$("#view").scrollTo({top:el.offsetTop*(+$("#pages").dataset.z||1)-10,behavior:"smooth"});$("#side").classList.remove("open")});nav.append(a)})}
 function refreshDerived(){
@@ -1361,7 +1382,7 @@ function touched(path){
 const pages=$("#pages");
 pages.addEventListener("input",e=>{const f=e.target.closest(".f[data-path]");if(!f)return;
   if(!f.textContent&&!f.querySelector("img,li"))f.innerHTML="";
-  setP(doc,f.dataset.path,f.classList.contains("rich")?f.innerHTML:f.textContent.replace(/\n/g," "));touched(f.dataset.path)});
+  setP(doc,f.dataset.path,f.classList.contains("rich")?f.innerHTML:f.textContent.replace(/\n/g," "));touched(f.dataset.path);if(f.dataset.fit||f.closest(".page.overflow")||overflows(f.closest(".page")))checkOverflow()});
 pages.addEventListener("focusout",e=>{const f=e.target.closest(".f.rich[data-path]");if(!f)return;const s=sanitize(f.innerHTML);setP(doc,f.dataset.path,plain(s)?s:"");if(!plain(s))f.innerHTML="";else if(f.dataset.tok){BSC=battleSeries();f.innerHTML=tokFormat(s,f.dataset.wid)}delete f.dataset.raw;hideRtb();autosave()});
 pages.addEventListener("keydown",e=>{const f=e.target.closest(".f[data-path]");if(f&&!f.classList.contains("rich")&&e.key==="Enter"){e.preventDefault();f.blur()}});
 pages.addEventListener("paste",e=>{
@@ -1699,7 +1720,7 @@ async function exportDocx(){
   const HL={title:D.HeadingLevel.TITLE,h1:D.HeadingLevel.HEADING_1,h2:D.HeadingLevel.HEADING_2,h3:D.HeadingLevel.HEADING_3};
   const runs=(p,s,base)=>p.runs.map(r=>new D.TextRun({text:r.t,bold:!!r.b||s==="h3"||s==="h4",italics:!!r.i,underline:r.u?{}:undefined,color:r.c||base,size:SZ[s]||17,font:"JetBrains Mono"}));
   function paras(el,tw){
-    const s=el.dataset.s||"body",cs=getComputedStyle(el);const base=rgbHex(cs.color);const al=cs.textAlign==="right"||cs.textAlign==="end"?D.AlignmentType.RIGHT:cs.textAlign==="center"?D.AlignmentType.CENTER:D.AlignmentType.LEFT;
+    const s=el.dataset.s||"body",cs=getComputedStyle(el);const base=rgbHex(cs.color);const al=cs.textAlign==="right"||cs.textAlign==="end"?D.AlignmentType.RIGHT:cs.textAlign==="center"?D.AlignmentType.CENTER:cs.textAlign==="justify"?D.AlignmentType.JUSTIFIED:D.AlignmentType.LEFT;
     const after=s==="h1"?100:s==="title"?60:s==="h2"?60:s==="toc"?0:40;
     if(s==="toc"){const tt=$(".tt",el),pg=$(".pg",el);const tp=richParas(tt)[0];const bold=el.classList.contains("l1");
       const kids=[...tp.runs.map(r=>new D.TextRun({text:r.t,bold,color:r.c||(bold?"1F3864":"000000"),size:15,font:"JetBrains Mono"})),new D.TextRun({text:"\t"+pg.textContent,size:15,bold,font:"JetBrains Mono",color:bold?"1F3864":"000000"})];
@@ -1729,13 +1750,14 @@ async function exportDocx(){
   async function many(el,tw){const out=[];for(const c of el.children){if(!c.getClientRects().length)continue;out.push(...await one(c,tw))}return out}
   const cellKids=k=>{if(!k.length)return [new D.Paragraph({children:[]})];if(k[k.length-1] instanceof D.Table)k.push(tiny());return k};
   async function table(el,tw){
-    const kids=[...el.children].filter(c=>c.getClientRects().length);if(!kids.length)return [];
+    const kids=[...el.children].filter(c=>c.getClientRects().length&&c.dataset.x!=="v");if(!kids.length)return [];
+    const vs=new Set([...el.children].filter(c=>c.dataset.x==="v").map(c=>+c.dataset.j)),VB={style:D.BorderStyle.SINGLE,size:4,color:"BFBFBF"};
     const pr=el.getBoundingClientRect();const n=Math.min(+el.dataset.cols||kids.length,kids.length);
     const first=kids.slice(0,n);const xs=first.map(c=>c.getBoundingClientRect().left-pr.left);
     let widths=xs.map((x,i)=>((i<n-1?xs[i+1]:(el.dataset.d==="grid"?pr.width:Math.max(first[i].getBoundingClientRect().right-pr.left,pr.width)))-x));const lead=xs[0];
     if(lead>3)widths=[lead,...widths];const scale=tw/widths.reduce((a,b)=>a+b,0);const W=widths.map(w=>Math.floor(w*scale));
     const rows=[];for(let i=0;i<kids.length;i+=n){const cells=[];if(lead>3)cells.push(new D.TableCell({width:{size:W[0],type:D.WidthType.DXA},borders:NBS,children:[new D.Paragraph({children:[]})]}));
-      for(let j=0;j<n;j++){const c=kids[i+j];const cw=W[j+(lead>3?1:0)];cells.push(new D.TableCell({width:{size:cw,type:D.WidthType.DXA},borders:NBS,margins:{left:0,right:j<n-1?110:0,top:0,bottom:40},
+      for(let j=0;j<n;j++){const c=kids[i+j];const cw=W[j+(lead>3?1:0)];cells.push(new D.TableCell({width:{size:cw,type:D.WidthType.DXA},borders:vs.has(j)&&i===0?{...NBS,left:VB}:NBS,margins:{left:vs.has(j)?110:0,right:j<n-1?110:0,top:0,bottom:40},
         children:cellKids(c?(c.dataset.x||c.dataset.d==="row"||c.dataset.d==="grid"?await one(c,cw-110):await many(c,cw-110)):[])}))}
       rows.push(new D.TableRow({children:cells}))}
     return [new D.Table({width:{size:tw,type:D.WidthType.DXA},columnWidths:W,layout:D.TableLayoutType.FIXED,borders:NBS,rows}),tiny()];
@@ -1772,6 +1794,7 @@ async function exportDocx(){
   busyT("Packing .docx…");let blob=await D.Packer.toBlob(wd);
   if(window.JSZip){const z=await JSZip.loadAsync(blob);let x=await z.file("word/document.xml").async("string");let k=100,cur=0;  // give every bookmark a unique id so contents links work in Word
     x=x.replace(/<w:bookmark(Start|End)([^>]*?)w:id="\d+"/g,(m,t,mid)=>{if(t==="Start")cur=++k;return `<w:bookmark${t}${mid}w:id="${cur}"`});z.file("word/document.xml",x);
+    const st=await z.file("word/settings.xml").async("string");z.file("word/settings.xml",st.replace(/(<w:evenAndOddHeaders|<w:compat>|<\/w:settings>)/,"<w:autoHyphenation/>$1"));
     blob=await z.generateAsync({type:"blob",mimeType:"application/vnd.openxmlformats-officedocument.wordprocessingml.document",compression:"DEFLATE"})}unbusy();await saveFile(fileBase()+".docx",blob);
   }catch(err){console.error(err);unbusy();toast("Word export failed: "+err.message)}
 }
@@ -1787,6 +1810,7 @@ async function exportPptx(){
     for(const td of $$("[data-d=td]",pg)){const r=rel(td,pg);sl.addShape(pptx.ShapeType.rect,{x:IN(r.x),y:IN(r.y),w:IN(r.w),h:IN(r.h),fill:{color:td.classList.contains("th")?"D9E2F3":(td.dataset.fill||"FFFFFF")},line:{color:"BFBFBF",width:.5}})}
     for(const el of topX(pg)){const r=rel(el,pg),x=el.dataset.x;
       if(x==="r"){sl.addShape(pptx.ShapeType.line,{x:IN(r.x),y:IN(r.y),w:IN(r.w),h:0,line:{color:"BFBFBF",width:.75}});continue}
+      if(x==="v"){sl.addShape(pptx.ShapeType.line,{x:IN(r.x),y:IN(r.y),w:0,h:IN(r.h),line:{color:"BFBFBF",width:.5}});continue}
       if(x==="i"||x==="g"){const im=await imgFor(el);
         if(im)sl.addImage({data:await blobToURL(im.blob),x:IN(r.x+im.place.x),y:IN(r.y+im.place.y),w:IN(im.place.w),h:IN(im.place.h)});
         else sl.addText(`[${el.dataset.label||"Image"}]`,{shape:pptx.ShapeType.rect,x:IN(r.x),y:IN(r.y),w:IN(r.w),h:IN(r.h),fill:{color:"F2F2F2"},line:{color:"C9C9C9",width:.5},fontFace:"JetBrains Mono",fontSize:6.5,color:"8C8C8C",align:"center",valign:"middle",margin:2});
@@ -1799,13 +1823,20 @@ async function exportPptx(){
         p.runs.forEach((ru,j)=>arr.push({text:(j===0?pre:"")+ru.t,options:{bold:!!ru.b||s==="h3"||s==="h4",italic:!!ru.i,underline:ru.u?{style:"sng"}:undefined,color:ru.c||base,breakLine:j===p.runs.length-1&&k<ps.length-1}}))});
       if(!arr.length)continue;
       const right=cs.textAlign==="right"||cs.textAlign==="end";const padW=s==="lead"?0:Math.max(6,r.w*.06);  // the grey lead band keeps its exact box
-      sl.addText(arr,{x:IN(right?r.x-padW:r.x),y:IN(r.y),w:IN(r.w+padW),h:IN(Math.max(r.h,fs*1.5)),fontFace:"JetBrains Mono",fontSize:fs,color:base,align:right?"right":cs.textAlign==="center"?"center":"left",valign:s==="lead"?"middle":"top",margin:s==="lead"?[0,4.5,0,4.5]:0,fill:s==="lead"?{color:"EDEDED"}:undefined,fit:"none",lineSpacingMultiple:1.05,paraSpaceAfter:0});
+      sl.addText(arr,{x:IN(right?r.x-padW:r.x),y:IN(r.y),w:IN(r.w+padW),h:IN(Math.max(r.h,fs*1.5)),fontFace:"JetBrains Mono",fontSize:fs,color:base,align:right?"right":cs.textAlign==="center"?"center":cs.textAlign==="justify"?"justify":"left",valign:s==="lead"?"middle":"top",margin:s==="lead"?[0,4.5,0,4.5]:0,fill:s==="lead"?{color:"EDEDED"}:undefined,fit:"none",lineSpacingMultiple:1.05,paraSpaceAfter:0});
     }}
   busyT("Packing .pptx…");const blob=await pptx.write({outputType:"blob"});unbusy();await saveFile(fileBase()+".pptx",blob);
   }catch(err){console.error(err);unbusy();toast("PowerPoint export failed: "+err.message)}
 }
 
 /* ---- PDF: page captured without pictures, then original-resolution pictures placed on top ---- */
+/* html2canvas does not draw the hyphens the browser adds when it splits a word at a line end, so they are written into the text
+   where the browser broke each word; the line widths stay the same and automatic hyphenation is switched off for the capture */
+function bakeHyphens(root){for(const el of $$(".jus",root)){const cuts=[],rg=document.createRange(),tw=document.createTreeWalker(el,NodeFilter.SHOW_TEXT);
+  for(let nd;(nd=tw.nextNode());)for(const m of nd.data.matchAll(/[A-Za-z\u00C0-\u024F\u00AD]{4,}/g)){rg.setStart(nd,m.index);rg.setEnd(nd,m.index+m[0].length);const rs=rg.getClientRects();
+    if(rs.length<2||Math.abs(rs[rs.length-1].top-rs[0].top)<2)continue;const t0=rs[0].top;
+    for(let i=m.index+1;i<m.index+m[0].length;i++){rg.setStart(nd,i);rg.setEnd(nd,i+1);if(rg.getBoundingClientRect().top>t0+2){cuts.push([nd,i]);break}}}
+  for(const [nd,i] of cuts.reverse())nd.insertData(i,"-");el.style.hyphens=el.style.webkitHyphens="manual"}}
 async function exportPdf(){
   if(!window.html2canvas||!window.jspdf){toast("The PDF export library did not load. Check your connection and reload.");return}
   busy("Building pages…");try{
@@ -1815,7 +1846,7 @@ async function exportPdf(){
   for(const [i,pg] of pagesEls.entries()){busyT(`PDF: page ${i+1} of ${pagesEls.length}`);
     const pics=$$(".slot[data-img],.slot[data-src],svg[data-x=g]",pg);const placed=[];for(const el of pics){const im=await imgFor(el);if(im)placed.push({r:rel(el,pg),im,id:el.dataset.img})}
     if(i===0)$$(".tl[data-p]",pg).forEach(el=>{const r=rel(el,pg);links.push({r,p:+el.dataset.p})});
-    st.classList.add("pdfcap");const cv=await html2canvas(pg,{scale:4,backgroundColor:"#ffffff",useCORS:true,logging:false});st.classList.remove("pdfcap");
+    bakeHyphens(pg);st.classList.add("pdfcap");const cv=await html2canvas(pg,{scale:4,backgroundColor:"#ffffff",useCORS:true,logging:false});st.classList.remove("pdfcap");
     if(i>0)pdf.addPage("a4","landscape");pdf.addImage(cv.toDataURL("image/jpeg",.92),"JPEG",0,0,297,210);
     for(const {r,im,id} of placed){const fmt=im.type==="image/png"?"PNG":"JPEG";pdf.addImage(new Uint8Array(await im.blob.arrayBuffer()),fmt,(r.x+im.place.x)*MM,(r.y+im.place.y)*MM,im.place.w*MM,im.place.h*MM,undefined,fmt==="PNG"?"FAST":"NONE")}
   }
