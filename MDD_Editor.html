@@ -66,6 +66,8 @@ button,select,input,textarea{font-family:var(--font);font-size:12px;color:var(--
 [data-s=h1]{font-size:15pt;color:var(--h1);line-height:1.2}
 [data-s=h2]{font-size:11.5pt;color:var(--h2);line-height:1.25}
 [data-s=h3]{font-size:9.5pt;color:var(--h3);font-weight:700}
+[data-s=h4]{font-size:8.5pt;color:var(--h2);font-weight:700}
+[data-s=lead]{font-size:8.5pt;color:var(--red);background:#EDEDED;padding:.8mm 1.6mm}
 [data-s=body],[data-s=meta]{font-size:8.5pt}
 [data-s=small],[data-s=toc]{font-size:7.5pt}
 [data-s=cap]{font-size:7pt;color:var(--hf)}
@@ -301,6 +303,10 @@ function newWalk(){return {id:uid(),brief:"",cat:"",desc:"",int:"",dmin:"",dmax:
 function newChar(){return {id:uid(),name:"",img:"",role:"",text:""}}
 const newNode=(label)=>({id:uid(),label,index:"",name:""});
 const newPre=()=>({name:"",n:3,imgs:Array.from({length:9},()=>({img:"",cap:""})),text:["","",""]});
+/* a World Setting block fills one quarter of a page (half its width, half its height) with text or six pictures;
+   a full-line list (references to other documents) takes the whole half-page row, the room of two blocks */
+const newWorld=(kind="text")=>({id:uid(),title:"",kind,text:"",imgs:Array(6).fill(""),caps:Array(6).fill("")});
+const WK={text:"Text",pic:"Picture",list:"Full line list"};
 const newSpec=()=>({id:uid(),item:"",spec:"",info:""});
 const newRule=()=>({id:uid(),g:false,name:"",brief:"",detail:"",cites:[]});
 function newDoc(){
@@ -308,7 +314,7 @@ function newDoc(){
     meta:{game:"",path:[newNode("Campaign"),newNode("Chapter")],level:"",levelIndex:"",owner:"",contact:"",escalate:"",created:""},
     state:{init:false,build:0,major:0,minor:0,total:0,date:"",lastEdit:""},
     cover:{imgs:["","",""],brief:"",fail:"",prereq:"",progress:""},
-    ctx:{themes:"",themesImgs:Array(6).fill(""),world:"",worldImgs:Array(6).fill(""),bg:[{kind:"campaign",text:""},{kind:"prev",text:""},{kind:"this",text:""}]},
+    ctx:{themes:"",themesImgs:Array(6).fill(""),themesCaps:Array(6).fill(""),worldLead:"",worlds:[newWorld("text"),newWorld("pic")],bg:[{kind:"campaign",text:""},{kind:"prev",text:""},{kind:"this",text:""}]},
     chars:[newChar(),newChar(),newChar()],
     walk:Array.from({length:20},newWalk),
     legends:{upd:"",items:[{id:uid(),name:"Master",img:""}]},
@@ -450,8 +456,8 @@ const E={
   char:c=>!(has(c.name)||has(c.role)||hasR(c.text)||hasI(c.img)),
   leg:it=>!(hasI(it.img)||(has(it.name)&&it.name!=="Master")),
   plan:(it,i)=>!(hasI(it.img)||(has(it.name)&&!(i===0&&it.name==="Overview"))),
-  themes:()=>!(hasR(doc.ctx.themes)||doc.ctx.themesImgs.some(hasI)),
-  world:()=>!(hasR(doc.ctx.world)||doc.ctx.worldImgs.some(hasI)),
+  themes:()=>!(hasR(doc.ctx.themes)||doc.ctx.themesImgs.some(hasI)||doc.ctx.themesCaps.some(has)),
+  world:w=>!(has(w.title)||(w.kind==="pic"?w.imgs.some(hasI)||w.caps.some(has):hasR(w.text))),
   bg:()=>!doc.ctx.bg.some(b=>hasR(b.text)),
   chart:c=>c.mode==="image"?!hasI(c.img):!c.nodes.some(n=>n.type!=="start"&&n.type!=="end"),
   guide:g=>!(hasR(g.text)||hasI(g.img)),
@@ -537,9 +543,14 @@ function layout(){
   const P=[],toc=[];const add=p=>{P.push(p);return P.length};const show=(emptyFn)=>!HIDE||!emptyFn();
   let n=0;if(!NOCOVER){n=add({t:"cover",sec:SEC.cover});toc.push({l:1,num:"1",t:"Overview",p:n})}
   // Context
-  const sT=show(E.themes),sW=show(E.world),sB=show(E.bg);const chars=HIDE?doc.chars.filter(c=>!E.char(c)):doc.chars;
+  const sT=show(E.themes),sB=show(E.bg);const worlds=HIDE?doc.ctx.worlds.filter(w=>!E.world(w)):doc.ctx.worlds;const chars=HIDE?doc.chars.filter(c=>!E.char(c)):doc.chars;
   let ctxFirst=true,tbFirst=true;
-  if(sT||sW){n=add({t:"ctx1",sec:SEC.ctx,h1:ctxFirst,sT,sW});toc.push({l:1,num:"2",t:"Context",p:n},{l:2,num:"2.1",t:"Themes and Background",p:n});ctxFirst=false;tbFirst=false}
+  // World Setting blocks take a quarter page each: two share the Themes page, four to each page after it
+  // World Setting rows are half a page: two blocks side by side, or one full-line list. One row shares the Themes page, two fill each page after it
+  const wrows=[];let wr=[];for(const w of worlds){if(w.kind==="list"){if(wr.length)wrows.push(wr);wrows.push([w]);wr=[]}else{wr.push(w);if(wr.length===2){wrows.push(wr);wr=[]}}}if(wr.length)wrows.push(wr);
+  if(wrows.length===0&&show(()=>!has(doc.ctx.worldLead)))wrows.push([]);
+  if(sT||wrows.length){const k=sT?1:2;n=add({t:"ctx1",sec:SEC.ctx,h1:ctxFirst,sT,rows:wrows.slice(0,k),first:true});toc.push({l:1,num:"2",t:"Context",p:n},{l:2,num:"2.1",t:"Themes and Background",p:n});ctxFirst=false;tbFirst=false;
+    for(let i=k;i<wrows.length;i+=2)add({t:"ctx1",sec:SEC.ctx,rows:wrows.slice(i,i+2)})}
   if(sB){n=add({t:"ctx2",sec:SEC.ctx,h1:ctxFirst,h2:tbFirst});if(ctxFirst)toc.push({l:1,num:"2",t:"Context",p:n});if(tbFirst)toc.push({l:2,num:"2.1",t:"Themes and Background",p:n});ctxFirst=false}
   // rows of 3 characters, two rows to a page unless renderInto found the second row does not fit
   const cc=[];chunk(chars,3).forEach((r,i)=>{const pg=cc[cc.length-1];if(pg&&pg.length<2&&!CHAR_SOLO.has(i))pg.push(r);else cc.push([r])});if(!cc.length&&!HIDE)cc.push([[]]);
@@ -627,10 +638,34 @@ R.cover=(p,L)=>{const m=doc.meta;const v=verLabel();
     (()=>{const r=ROW("1fr 1fr",COL(T("h1","Contents"),tocBlock(L.toc)),ovEls.length?COL(T("h1","Overview"),...nn(ovEls)):COL());r.style.marginTop="auto";return r})()  // sits at the foot of the cover
   ];
 };
-R.ctx1=(p)=>{const out=[p.h1?T("h1","Context"):null,T("h2","Themes and Background")];const A=[],B2=[];
-  if(p.sT)A.push(T("h3","Themes"),ROW("1fr 1fr",COL(F("ctx.themes","[Core themes, tone and emotional target of this level]",{rich:true})),GRID(3,nn(doc.ctx.themesImgs.map((_,i)=>I("ctx.themesImgs."+i,"Theme Ref "+(i+1)))))));
-  if(p.sW)B2.push(T("h3","World Setting"),ROW("1fr 1fr",COL(F("ctx.world","[Location, era, factions, rules of the world relevant to this level]",{rich:true})),GRID(3,nn(doc.ctx.worldImgs.map((_,i)=>I("ctx.worldImgs."+i,"World Ref "+(i+1)))))));
-  out.push(SPLIT(A.length?A:null,B2.length?B2:null));return out};
+/* six picture slots with legends. Exports that hide empty slots re-flow what is left: one picture grows to two thirds of the column,
+   two share a row, four make a 2×2, and a short last row is centred. maxH (mm) caps the height of the whole grid, so pictures in a
+   quarter-page World Setting block shrink to fit. Each row is its own grid so Word gets one table per row. */
+function figGrid(ip,cp,imgs,caps,label,maxH){
+  const fig=k=>{const im=I(`${ip}.${k}`,`${label} ${k+1}`),c=F(`${cp}.${k}`,"[Legend]",{s:"cap"});if(c)c.style.textAlign="center";return (im||c)?COL(im,c):null};
+  const ks=imgs.map((_,k)=>k).filter(k=>!HIDE||hasI(imgs[k])||has(caps[k]));if(!ks.length)return null;
+  const n=ks.length,w=!HIDE||n>=3?1/3:n===1?2/3:1/2,rows=HIDE&&n===4?[ks.slice(0,2),ks.slice(2)]:chunk(ks,3);
+  const lg=ks.some(k=>!HIDE||has(caps[k]))?4.6:0,y=maxH?((maxH-(rows.length-1)*2)/rows.length-lg)*16/9:0;
+  return COL(...rows.map(rw=>{const k=rw.length,g=GRID(k,nn(rw.map(fig)));const full=`calc(${k*w*100}% - ${(1/w-k)*2*w}mm)`;
+    g.style.width=y?`min(${full}, ${(k*y+(k-1)*2).toFixed(1)}mm)`:full;g.style.marginInline="auto";return g}))}
+function worldBlock(w){const b="ctx.worlds."+w.id,ed=isEdit(),n=doc.ctx.worlds.length;
+  const sel=ed?h("select",{class:"ctl walkcat","data-act":"world-kind","data-id":w.id,"aria-label":"Block content"},Object.entries(WK).map(([v,t])=>h("option",{value:v,selected:w.kind===v},t))):null;
+  const tl=F(b+".title","[Subtitle]",{s:"h4",inline:ed});
+  const head=ed?h("div",{"data-x":"t","data-s":"h4"},tl,sel,ICTL(n>1?["world-up","↑",w.id]:null,n>1?["world-down","↓",w.id]:null,["world-add","+ Add block",w.id],n>1?["world-rm","Remove",w.id]:null)):tl;
+  const body=w.kind==="pic"?figGrid(b+".imgs",b+".caps",w.imgs,w.caps,"World Ref",62)
+    :w.kind==="list"?F(b+".text","[Referenced documents, one per item: title, owner, version or link]",{rich:true,cls:"autolist"})
+    :F(b+".text","[Location, era, factions, rules of the world relevant to this level]",{rich:true});
+  return COL(head,body)}
+R.ctx1=(p)=>{const out=[p.h1?T("h1","Context"):null,p.first?T("h2","Themes and Background"):null];
+  const half=kids=>h("div",{class:"half"},...nn(kids.flat()));const parts=[];
+  if(p.sT)parts.push(half([T("h3","Themes"),ROW("1fr 1fr",COL(F("ctx.themes","[Core themes, tone and emotional target of this level]",{rich:true})),
+    figGrid("ctx.themesImgs","ctx.themesCaps",doc.ctx.themesImgs,doc.ctx.themesCaps,"Theme Ref"))]));
+  // one sentence on the world as a whole sits above the first row of blocks
+  const lead=()=>F("ctx.worldLead","[One sentence on the world as a whole, e.g. a 21st-century fictional world closely resembling our own]",{s:"lead"});
+  p.rows.forEach((rw,i)=>parts.push(half([i===0?T("h3","World Setting"):null,p.first&&i===0?lead():null,
+    !rw.length?null:rw[0].kind==="list"?worldBlock(rw[0]):ROW("1fr 1fr",worldBlock(rw[0]),rw[1]?worldBlock(rw[1]):COL())])));
+  if(parts.length===1)parts.push(half([]));  // a lone row keeps to the top half
+  out.push(parts.length?h("div",{class:"split"},parts):null);return out};
 function bgHead(i,b){const k=BGK[b.kind]||BGK.campaign;const red=b.kind==="this";
   if(!isEdit())return T("h3",red?h("span",{class:"red"},k.t):k.t);
   const sel=h("select",{class:"bgsel"+(red?" red":""),"data-act":"bg-kind","data-i":i,"aria-label":"Column content"},Object.entries(BGK).map(([v,o])=>h("option",{value:v,selected:b.kind===v},o.t)));
@@ -1255,7 +1290,11 @@ function flat(d){
   A("cover.prereq","1","Overview › Prerequisite Levels",d.cover.prereq,"r");A("cover.progress","1","Overview › Progression Dependencies",d.cover.progress,"r");
   d.cover.imgs.forEach((v,i)=>A("cover.imgs."+i,"1",`Cover › Image ${i+1}`,v,"i"));
   A("ctx.themes","2.1","Themes › Text",d.ctx.themes,"r");d.ctx.themesImgs.forEach((v,i)=>A("ctx.themesImgs."+i,"2.1",`Themes › Image ${i+1}`,v,"i"));
-  A("ctx.world","2.1","World Setting › Text",d.ctx.world,"r");d.ctx.worldImgs.forEach((v,i)=>A("ctx.worldImgs."+i,"2.1",`World Setting › Image ${i+1}`,v,"i"));
+  d.ctx.themesCaps.forEach((v,i)=>A("ctx.themesCaps."+i,"2.1",`Themes › Legend ${i+1}`,v));
+  A("ctx.worldLead","2.1","World Setting › Lead",d.ctx.worldLead);o["#worlds"]={idx:"2.1",label:"World Setting",v:d.ctx.worlds.map(w=>w.id).join(","),kind:"list"};
+  d.ctx.worlds.forEach((w,i)=>{const p="ctx.worlds."+w.id,nm=`World Setting ${i+1}`;A(p+".title","2.1",nm+" › Subtitle",w.title);
+    A(p+".kind","2.1",nm+" › Content",WK[w.kind]);A(p+".text","2.1",nm+" › Text",w.text,"r");
+    w.imgs.forEach((v,k)=>A(`${p}.imgs.${k}`,"2.1",`${nm} › Image ${k+1}`,v,"i"));w.caps.forEach((v,k)=>A(`${p}.caps.${k}`,"2.1",`${nm} › Legend ${k+1}`,v))});
   d.ctx.bg.forEach((b,i)=>{A(`ctx.bg.${i}.kind`,"2.1",`Background › Column ${i+1} content`,(BGK[b.kind]||{}).t);A(`ctx.bg.${i}.text`,"2.1",`Background › Column ${i+1} text`,b.text,"r")});
   o["#chars"]={idx:"2.2",label:"Characters",v:d.chars.map(c=>c.id).join(","),kind:"list"};
   d.chars.forEach((c,i)=>{const n="2.2",p="chars."+c.id,nm=`Character ${i+1}`;A(p+".name",n,nm+" › Name",c.name);A(p+".role",n,nm+" › Role",c.role);A(p+".text",n,nm+" › Description",c.text,"r");A(p+".img",n,nm+" › Image",c.img,"i")});
@@ -1330,7 +1369,7 @@ pages.addEventListener("paste",e=>{
   const items=[...(e.clipboardData&&e.clipboardData.items||[])];const imgItem=items.find(i=>i.type.startsWith("image/"));
   if(slot&&imgItem&&!slot.closest(".locked")){e.preventDefault();setImage(slot.dataset.path,imgItem.getAsFile());return}
   const f=e.target.closest&&e.target.closest(".f[data-path]");if(f){e.preventDefault();const t=e.clipboardData.getData("text/plain");document.execCommand("insertText",false,t)}});
-pages.addEventListener("focusin",e=>{const f=e.target.closest(".f.rich[data-path]");if(f&&f.dataset.tok&&!f.dataset.raw){f.dataset.raw="1";f.innerHTML=getP(doc,f.dataset.path)||""}if(f)showRtb(f);else hideRtb()});
+pages.addEventListener("focusin",e=>{const f=e.target.closest(".f.rich[data-path]");if(f&&f.dataset.tok&&!f.dataset.raw){f.dataset.raw="1";f.innerHTML=getP(doc,f.dataset.path)||""}if(f&&f.classList.contains("autolist")&&!plain(f.innerHTML))document.execCommand("insertUnorderedList");if(f)showRtb(f);else hideRtb()});
 let pickPath=null;
 pages.addEventListener("click",e=>{
   const cv=e.target.closest(".camv[data-copy]");if(cv){e.preventDefault();copyText(cv.dataset.copy).then(ok=>toast(ok?"Copied "+cv.dataset.copy:"Could not copy to the clipboard"));return}
@@ -1348,6 +1387,7 @@ pages.addEventListener("change",e=>{const s=e.target.closest("select[data-act],i
   if(s.dataset.act==="flow-mode"){doc.flow.mode=s.value;autosave();render()}
   if(s.dataset.act==="bg-kind"){doc.ctx.bg[+s.dataset.i].kind=s.value;autosave();render()}
   if(s.dataset.act==="walk-cat"){const w=doc.walk.find(x=>x.id===s.dataset.id);if(w){w.cat=s.value;touched();render()}}
+  if(s.dataset.act==="world-kind"){const w=doc.ctx.worlds.find(x=>x.id===s.dataset.id);if(w){w.kind=s.value;touched();render()}}
   if(s.dataset.act==="tl-mode"){doc.beats.tlMode=s.value;touched();render()}});
 pages.addEventListener("dragover",e=>{const s=e.target.closest(".slot[data-path]");if(s&&!PREVIEW&&!s.closest(".locked")){e.preventDefault();s.classList.add("drag")}});
 pages.addEventListener("dragleave",e=>{const s=e.target.closest(".slot[data-path]");if(s)s.classList.remove("drag")});
@@ -1399,6 +1439,10 @@ function act(a,id,el){
     case "chart-rm":if(doc.flow.charts.length>1)doc.flow.charts.splice(ix(doc.flow.charts),1);break;
     case "chart-up":mv(doc.flow.charts,ix(doc.flow.charts),-1);break;
     case "chart-down":mv(doc.flow.charts,ix(doc.flow.charts),1);break;
+    case "world-add":doc.ctx.worlds.splice(ix(doc.ctx.worlds)+1,0,newWorld());break;
+    case "world-up":mv(doc.ctx.worlds,ix(doc.ctx.worlds),-1);break;
+    case "world-down":mv(doc.ctx.worlds,ix(doc.ctx.worlds),1);break;
+    case "world-rm":if(doc.ctx.worlds.length>1)doc.ctx.worlds.splice(ix(doc.ctx.worlds),1);break;
     case "chart-mode":{const c=doc.flow.charts[ix(doc.flow.charts)];c.mode=c.mode==="image"?"auto":"image";break}
   }
   autosave();render();
@@ -1581,6 +1625,21 @@ async function migrate(d){
   const x0=newDoc().appx,xd=d.appx||{};n.appx={pre:Object.assign(x0.pre,xd.pre||{}),spec:xd.spec||x0.spec,guide:xd.guide||x0.guide};
   // projects saved before the appendices existed start tracking them from what they hold now
   if(n.committed&&!n.committed["#spec"]){const cur=flat(n);for(const [k,v] of Object.entries(cur))if(/^(appx\.|#spec|#rules)/.test(k))n.committed[k]=v}
+  // one World Setting (text beside six images) becomes a Text block and a Picture block; their recorded values follow them
+  const C=n.committed,mvk=(a,b)=>{if(C&&C[a]){C[b]=C[a];delete C[a]}};let wmig=false;
+  if(d.ctx&&!d.ctx.worlds){const a=newWorld("text"),b=newWorld("pic");a.text=d.ctx.world||"";b.imgs=(d.ctx.worldImgs||[]).concat(Array(6).fill("")).slice(0,6);
+    n.ctx.worlds=[a,b];delete n.ctx.world;delete n.ctx.worldImgs;mvk("ctx.world",`ctx.worlds.${a.id}.text`);for(let k=0;k<6;k++)mvk("ctx.worldImgs."+k,`ctx.worlds.${b.id}.imgs.${k}`);wmig=true}
+  else if(n.ctx.worlds.some(w=>w.mode)){const out=[];  // blocks from a pre-release build that held text and pictures together
+    for(const w of n.ctx.worlds){const p="ctx.worlds."+w.id;if(C){delete C[p+".mode"];delete C[p+".text2"]}
+      const keep={imgs:w.imgs||Array(6).fill(""),caps:w.caps||Array(6).fill("")};  // pictures hidden by a text layout stay with the block
+      if(w.mode==="list"){out.push({...newWorld("list"),id:w.id,title:w.title,text:w.text,...keep});continue}
+      out.push({...newWorld("text"),id:w.id,title:w.title,text:w.text,...(w.mode==="text"?keep:{})});
+      if(w.mode==="text"){out.push({...newWorld("text"),text:w.text2||""});continue}
+      const b={...newWorld("pic"),imgs:w.imgs,caps:w.caps||Array(6).fill("")};out.push(b);for(let k=0;k<6;k++){mvk(`${p}.imgs.${k}`,`ctx.worlds.${b.id}.imgs.${k}`);mvk(`${p}.caps.${k}`,`ctx.worlds.${b.id}.caps.${k}`)}}
+    n.ctx.worlds=out;wmig=true}
+  n.ctx.worlds.forEach(w=>{w.caps=w.caps||Array(6).fill("")});
+  if(wmig&&C){const cur=flat(n);for(const [k,v] of Object.entries(cur))if(/^ctx\.worlds\.[^.]+\.kind$/.test(k)||k==="#worlds")C[k]=v;
+    for(const [k,v] of Object.entries(C))if(k.startsWith("ctx.worlds.")&&cur[k])v.label=cur[k].label}
   n.schema=3;return n;
 }
 async function resetPics(){for(const f of Object.keys(BLOBS)){delete BLOBS[f];if(URLS[f]){URL.revokeObjectURL(URLS[f]);delete URLS[f]}}for(const k of Object.keys(PREV))delete PREV[k];for(const k of Object.keys(FULL))delete FULL[k];await IDB.clearPics()}
@@ -1630,7 +1689,7 @@ async function imgFor(el){
 }
 
 /* ---- Word ---- */
-const SZ={title:48,h1:30,h2:23,h3:19,body:17,meta:17,small:15,toc:15,cap:14};
+const SZ={title:48,h1:30,h2:23,h3:19,h4:17,lead:17,body:17,meta:17,small:15,toc:15,cap:14};
 async function exportDocx(){
   const D=window.docx;if(!D){toast("The Word export library did not load. Check your connection and reload.");return}
   busy("Building pages…");try{
@@ -1638,7 +1697,7 @@ async function exportDocx(){
   const NB={style:D.BorderStyle.NONE,size:0,color:"FFFFFF"};const NBS={top:NB,bottom:NB,left:NB,right:NB,insideHorizontal:NB,insideVertical:NB};
   const tiny=(brk)=>new D.Paragraph({pageBreakBefore:!!brk,spacing:{before:0,after:0,line:40,lineRule:D.LineRuleType.EXACT},children:[new D.TextRun({text:"",size:2})]});
   const HL={title:D.HeadingLevel.TITLE,h1:D.HeadingLevel.HEADING_1,h2:D.HeadingLevel.HEADING_2,h3:D.HeadingLevel.HEADING_3};
-  const runs=(p,s,base)=>p.runs.map(r=>new D.TextRun({text:r.t,bold:!!r.b||s==="h3",italics:!!r.i,underline:r.u?{}:undefined,color:r.c||base,size:SZ[s]||17,font:"JetBrains Mono"}));
+  const runs=(p,s,base)=>p.runs.map(r=>new D.TextRun({text:r.t,bold:!!r.b||s==="h3"||s==="h4",italics:!!r.i,underline:r.u?{}:undefined,color:r.c||base,size:SZ[s]||17,font:"JetBrains Mono"}));
   function paras(el,tw){
     const s=el.dataset.s||"body",cs=getComputedStyle(el);const base=rgbHex(cs.color);const al=cs.textAlign==="right"||cs.textAlign==="end"?D.AlignmentType.RIGHT:cs.textAlign==="center"?D.AlignmentType.CENTER:D.AlignmentType.LEFT;
     const after=s==="h1"?100:s==="title"?60:s==="h2"?60:s==="toc"?0:40;
@@ -1646,7 +1705,7 @@ async function exportDocx(){
       const kids=[...tp.runs.map(r=>new D.TextRun({text:r.t,bold,color:r.c||(bold?"1F3864":"000000"),size:15,font:"JetBrains Mono"})),new D.TextRun({text:"\t"+pg.textContent,size:15,bold,font:"JetBrains Mono",color:bold?"1F3864":"000000"})];
       return [new D.Paragraph({spacing:{after:0},tabStops:[{type:D.TabStopType.RIGHT,position:Math.max(500,tw-60),leader:"dot"}],
         children:el.dataset.p?[new D.InternalHyperlink({anchor:"mddpg"+el.dataset.p,children:kids})]:kids})]}
-    return richParas(el).map(p=>new D.Paragraph({heading:HL[s],alignment:al,spacing:{before:0,after},indent:p.list?{left:300,hanging:220}:undefined,
+    return richParas(el).map(p=>new D.Paragraph({heading:HL[s],alignment:al,spacing:{before:0,after},shading:s==="lead"?{type:D.ShadingType.CLEAR,color:"auto",fill:"EDEDED"}:undefined,indent:p.list?{left:300,hanging:220}:undefined,
       children:[...(p.list?[new D.TextRun({text:p.list==="ul"?"• ":p.n+". ",size:SZ[s]||17,font:"JetBrains Mono",color:base})]:[]),...runs(p,s,base)]}));
   }
   async function image(el){
@@ -1737,10 +1796,10 @@ async function exportPptx(){
         sl.addText(tt.textContent,{...o,x:IN(a.x),y:IN(a.y),w:IN(a.w+6),h:IN(a.h)});sl.addText(pe.textContent,{...o,x:IN(b.x-20),y:IN(b.y),w:IN(b.w+20),h:IN(b.h),align:"right"});continue}
       const ps=richParas(el);const arr=[];
       ps.forEach((p,k)=>{const pre=p.list?(p.list==="ul"?"• ":p.n+". "):"";if(!p.runs.length)arr.push({text:" ",options:{breakLine:k<ps.length-1}});
-        p.runs.forEach((ru,j)=>arr.push({text:(j===0?pre:"")+ru.t,options:{bold:!!ru.b||s==="h3",italic:!!ru.i,underline:ru.u?{style:"sng"}:undefined,color:ru.c||base,breakLine:j===p.runs.length-1&&k<ps.length-1}}))});
+        p.runs.forEach((ru,j)=>arr.push({text:(j===0?pre:"")+ru.t,options:{bold:!!ru.b||s==="h3"||s==="h4",italic:!!ru.i,underline:ru.u?{style:"sng"}:undefined,color:ru.c||base,breakLine:j===p.runs.length-1&&k<ps.length-1}}))});
       if(!arr.length)continue;
-      const right=cs.textAlign==="right"||cs.textAlign==="end";const padW=Math.max(6,r.w*.06);
-      sl.addText(arr,{x:IN(right?r.x-padW:r.x),y:IN(r.y),w:IN(r.w+padW),h:IN(Math.max(r.h,fs*1.5)),fontFace:"JetBrains Mono",fontSize:fs,color:base,align:right?"right":cs.textAlign==="center"?"center":"left",valign:"top",margin:0,fit:"none",lineSpacingMultiple:1.05,paraSpaceAfter:0});
+      const right=cs.textAlign==="right"||cs.textAlign==="end";const padW=s==="lead"?0:Math.max(6,r.w*.06);  // the grey lead band keeps its exact box
+      sl.addText(arr,{x:IN(right?r.x-padW:r.x),y:IN(r.y),w:IN(r.w+padW),h:IN(Math.max(r.h,fs*1.5)),fontFace:"JetBrains Mono",fontSize:fs,color:base,align:right?"right":cs.textAlign==="center"?"center":"left",valign:s==="lead"?"middle":"top",margin:s==="lead"?[0,4.5,0,4.5]:0,fill:s==="lead"?{color:"EDEDED"}:undefined,fit:"none",lineSpacingMultiple:1.05,paraSpaceAfter:0});
     }}
   busyT("Packing .pptx…");const blob=await pptx.write({outputType:"blob"});unbusy();await saveFile(fileBase()+".pptx",blob);
   }catch(err){console.error(err);unbusy();toast("PowerPoint export failed: "+err.message)}
