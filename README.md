@@ -67,7 +67,8 @@ Defend the safe house as Reese and Shaw !(b2,35)
 | --- | --- | --- |
 | `!(b1,45)` | Fight unit b1 for 45 seconds | `[Battle: Name (45s)]` |
 | `!(30)` | Rest for 30 seconds (intensity decays) | `[Rest: 30s]` |
-| `!(e1)` | Trigger event e1 | `[Event: Name (Time)]` |
+| `!(e1,20)` | Trigger event e1 lasting 20 seconds (counts towards the subsection's time) | `[Event: Name (20s)]`, plus `[Exceeded Event Time]` if it runs past the subsection's longest duration |
+| `!(e1)` | Older form: trigger event e1 | `[Event: Name (Time)]`; an `[Outdated]` note shows while editing only |
 | `? ...` | Line starting with `?` (after its number) is optional and excluded from all statistics | grey `[Option] ...` |
 
 Units, enemy types, events, and intensity decay rates (default: -2 per 30s) are configured under **Battle data** in the top bar.
@@ -162,7 +163,8 @@ Defend the safe house as Reese and Shaw !(b2,35)
 | --- | --- | --- |
 | `!(b1,45)` | 与战斗单位 b1 战斗 45 秒 | `[Battle: 名称 (45s)]` |
 | `!(30)` | 休息 30 秒，期间强度衰减 | `[Rest: 30s]` |
-| `!(e1)` | 触发事件 e1 | `[Event: 名称 (发生时间)]` |
+| `!(e1,20)` | 触发事件 e1，持续 20 秒（计入小节时长） | `[Event: 名称 (20s)]`，超出小节最长时长时再加 `[Exceeded Event Time]` |
+| `!(e1)` | 旧写法：触发事件 e1 | `[Event: 名称 (发生时间)]`；编辑时显示 `[Outdated]` 提示，不会导出 |
 | `? ...` | 以 `?` 开头（不计序号）的条目为可选项，不计入任何统计 | 灰色 `[Option] ...` |
 
 战斗单位、敌人类型、事件、强度衰减规则（默认每 30 秒 -2）都在顶部的 **Battle data** 里设置。

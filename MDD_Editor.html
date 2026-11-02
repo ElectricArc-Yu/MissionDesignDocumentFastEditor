@@ -175,6 +175,8 @@ span.f{display:inline;min-height:0}
 .toke{background:#D9EAD3;color:#38761D}
 .tokr{background:#EDEDED;color:#595959}
 .tokopt{color:#8C8C8C}
+.tokx{background:#FFE699;color:#C00000;font-weight:700}
+.tokold{color:#A8560C;border:.5pt dashed #A8560C}
 .camv{cursor:copy;border-radius:.6mm}
 #pages.edit .camv{border-bottom:.5pt dotted #9AA7BD}
 .camv:hover{background:#DCE5F4}
@@ -211,7 +213,7 @@ span.f{display:inline;min-height:0}
 
 <div id="app">
   <header id="bar">
-    <div class="brand">MDD<small>Mission Design Document</small></div>
+    <div class="brand">MDD<small>v1.0</small></div>
     <div class="grp">
       <button class="btn" id="bSetup">Document setup</button>
       <button class="btn" id="bBattle">Battle data</button>
@@ -428,7 +430,7 @@ function richParas(root){
     const g={...f},T=c.tagName;
     if(T==="B"||T==="STRONG"||c.classList.contains("lbl"))g.b=true;
     if(T==="I"||T==="EM")g.i=true;if(T==="U")g.u=true;
-    if(c.classList.contains("red")||T==="FONT")g.c="C00000";else if(c.classList.contains("tokb"))g.c="9C2A1F";else if(c.classList.contains("toke"))g.c="38761D";else if(c.classList.contains("tokr"))g.c="595959";else if(c.classList.contains("tokopt"))g.c="8C8C8C";
+    if(c.classList.contains("red")||T==="FONT")g.c="C00000";else if(c.classList.contains("tokb"))g.c="9C2A1F";else if(c.classList.contains("toke"))g.c="38761D";else if(c.classList.contains("tokr"))g.c="595959";else if(c.classList.contains("tokopt"))g.c="8C8C8C";else if(c.classList.contains("tokx")){g.c="C00000";g.b=true}
     if(!g.c&&c.classList.contains("ph")&&g.c!=="C00000")g.c="8C8C8C";
     if(T==="BR"){if(BLK.has(node.tagName)&&!c.nextSibling)continue;nl();continue}
     if(T==="UL"||T==="OL"){let n=0;for(const li of c.children){nl(T==="UL"?"ul":"ol",++n);walk(li,g)}nl();continue}
@@ -659,7 +661,7 @@ R.walk=(p)=>{const out=[];const halves=[];const tot=walkTotals();const cnt=HIDE?
     const mid=nn([I(b+".m.0","Top-down / Overall Space"),I(b+".m.2","Free Pick A"),I(b+".m.1","Key Highlight View"),I(b+".m.3","Free Pick B")]);
     const text=COL(F(b+".desc","[Detailed description: what happens, what the player learns, how the space supports it]",{rich:true}),
         LR(it?T("body",[L1("Intensity: "),it]):null,(d1||d2)?T("body",[L1("Duration: "),d1,d1&&d2?"-":null,d2,HIDE?"s":null],{class:"r"}):null),
-        F(b+".acts","[1. Main player action  2. Next action  (optional exploration in brackets)  3. ...  Battle !(b1,45)  Rest !(30)  Event !(e1)  Optional: start with ?]",{rich:true,tok:true,wid:w.id}));
+        F(b+".acts","[1. Main player action  2. Next action  (optional exploration in brackets)  3. ...  Battle !(b1,45)  Rest !(30)  Event !(e1,20)  Optional: start with ?]",{rich:true,tok:true,wid:w.id}));
     const ref=nn([I(b+".r.0","Main Reference"),I(b+".r.1","Mood Picture")]);
     out.push(HIDE&&(mid.length<4||ref.length<2)?walkMixed(text,[...mid,...ref]):ROW("3fr 2fr 1fr",text,mid.length?GRID(2,mid):COL(),COL(...ref)));
   });
@@ -707,7 +709,7 @@ R.bat2=(p)=>{const B=doc.battle;return [batH1(p),p.first?T("h2","Events & Defaul
     p.rows.length?p.rows.map(e=>h("div",{class:"tr","data-d":"tr"},cellD(T("small","e"+e.no)),cellD(T("small",e.name||"—")),cellD(T("small",e.delta===""?"—":(+e.delta>0?"+":"")+e.delta))))
     :h("div",{class:"tr","data-d":"tr"},["[e1]","[Event Name]","[+/-Amount]"].map(phCell))),
   p.last?T("body",[L1("Natural decay: "),`-${B.decay.amount} every ${B.decay.per}s outside combat`]):null,
-  (p.last&&!HIDE)?T("cap","Mission Walkthrough actions: !(b1,45) = 45 s battle with combat unit b1 · !(30) = 30 s rest · !(e1) = event e1."):null]};
+  (p.last&&!HIDE)?T("cap","Mission Walkthrough actions: !(b1,45) = 45 s battle with combat unit b1 · !(30) = 30 s rest · !(e1,20) = event e1 lasting 20 s · !(e1) = event e1 (older form, shows when it happens)."):null]};
 R.bat3=(p)=>{const walks=doc.walk.map((w,i)=>({w,i})).filter(x=>!HIDE||!E.walk(x.w));const n=walks.length;
   return [batH1(p),p.first?T("h2","Battle & Event Frequency by Brief"):null,p.first?T("cap","Count of each combat unit (red) and event (green) per Mission Walkthrough subsection."):null,
     h("div",{class:"tbl","data-d":"tbl",style:`grid-template-columns:42mm repeat(${Math.max(1,n)},minmax(0,1fr))`},
@@ -902,7 +904,7 @@ function chartSVG(){
 }
 
 /* ---------------- battle intensity ---------------- */
-const TOKRE=/!\(\s*(?:(b)\s*(\d+)\s*,\s*(\d+(?:\.\d+)?)|(e)\s*(\d+)|(\d+(?:\.\d+)?))\s*\)/gi;
+const TOKRE=/!\(\s*(?:(b)\s*(\d+)\s*,\s*(\d+(?:\.\d+)?)|(e)\s*(\d+)(?:\s*,\s*(\d+(?:\.\d+)?))?|(\d+(?:\.\d+)?))\s*\)/gi;
 /** an action whose first character (after any list number) is ? is optional: shown as [Option] and left out of every statistic */
 const OPTRE=/^(\s*(?:\d+\s*[.)、]\s*)?)[?？]\s*/;
 /** text nodes grouped by visual line (block elements and <br> break lines) */
@@ -913,30 +915,37 @@ function actLines(root){const lines=[[]];const brk=()=>{if(lines[lines.length-1]
 const lineText=l=>l.map(t=>t.nodeValue).join("");
 const actsDOM=html=>{const d=document.createElement("div");d.innerHTML=String(html||"");return d};
 const countedActs=html=>actLines(actsDOM(html)).map(lineText).filter(s=>!OPTRE.test(s)).join("\n");
-function tokens(text){const out=[];for(const m of String(text||"").matchAll(TOKRE)){if(m[1])out.push({k:"b",no:+m[2],dur:+m[3]});else if(m[4])out.push({k:"e",no:+m[5]});else out.push({k:"r",dur:+m[6]})}return out}
+function tokens(text){const out=[];for(const m of String(text||"").matchAll(TOKRE)){if(m[1])out.push({k:"b",no:+m[2],dur:+m[3]});else if(m[4])out.push({k:"e",no:+m[5],dur:m[6]!=null?+m[6]:0});else out.push({k:"r",dur:+m[7]})}return out}
 const unitByNo=no=>doc.battle.units.find(u=>+u.no===+no),eventByNo=no=>doc.battle.events.find(e=>+e.no===+no);
 const enemyName=id=>(doc.battle.enemyTypes.find(t=>t.id===id)||{}).name||"?";
 let BSC=null;
-/** battle-based series: battles set intensity to the unit estimate, events add their delta, rest/exploration decays; walk time = shortest duration */
+/** battle-based series: battles set intensity to the unit estimate, events add their delta (an !(e1,20) event then runs for 20 s, decaying like rest), rest/exploration decays; walk time = shortest duration.
+    times[walk id] holds, per counted token, its start time and whether a timed event runs past the subsection's longest duration */
 function battleSeries(){
   const B=doc.battle;const rate=(+B.decay.amount||0)/(+B.decay.per||30);
   let t=0,I=0;const pts=[{t:0,I:0}],bands=[],evs=[],ends=[],times={},freq={};let has=false;
   const decay=dur=>{if(dur<=0)return;if(rate>0&&I>0&&I-rate*dur<0){pts.push({t:t+I/rate,I:0})}t+=dur;I=Math.max(0,I-rate*dur);pts.push({t,I})};
   doc.walk.forEach((w,i)=>{const tk=tokens(countedActs(w.acts));const tm=[];let used=0;const t0=t;const fq=freq[w.id]={};
-    for(const k of tk){tm.push(t);has=true;
+    const dmin=parseFloat(w.dmin),dmax=parseFloat(w.dmax),limit=!isNaN(dmax)?dmax:dmin;
+    for(const k of tk){has=true;let over=false;const ts=t;
       if(k.k==="b"){const u=unitByNo(k.no);fq["b"+k.no]=(fq["b"+k.no]||0)+1;pts.push({t,I});I=u?(+u.intensity||0):I;pts.push({t,I});bands.push({t0:t,t1:t+k.dur,no:k.no});t+=k.dur;pts.push({t,I});used+=k.dur}
       else if(k.k==="r"){decay(k.dur);used+=k.dur}
-      else{const e=eventByNo(k.no);fq["e"+k.no]=(fq["e"+k.no]||0)+1;pts.push({t,I});I=Math.max(0,I+(e?(+e.delta||0):0));pts.push({t,I});evs.push({t,no:k.no,I})}}
-    times[w.id]=tm;const dmin=parseFloat(w.dmin);const total=isNaN(dmin)?used:dmin;if(total-used>0)decay(total-used);
+      else{const e=eventByNo(k.no);fq["e"+k.no]=(fq["e"+k.no]||0)+1;pts.push({t,I});I=Math.max(0,I+(e?(+e.delta||0):0));pts.push({t,I});evs.push({t,t1:t+k.dur,no:k.no,I});
+        decay(k.dur);used+=k.dur;over=k.dur>0&&!isNaN(limit)&&used>limit}
+      tm.push({t:ts,over})}
+    times[w.id]=tm;const total=isNaN(dmin)?used:dmin;if(total-used>0)decay(total-used);
     if(t>t0)ends.push({t,i});
   });
   return {pts,bands,evs,ends,times,freq,has,end:t};
 }
 function tokFormat(html,wid){let k=0;const tm=(BSC&&BSC.times[wid])||[];
   // tokens on optional lines are not in the battle series, so they take no time slot
-  const fmt=(s,opt)=>esc(s).replace(TOKRE,(m,b,bn,bd,e,en,r)=>{const t=opt?null:tm[k++];
+  const fmt=(s,opt)=>esc(s).replace(TOKRE,(m,b,bn,bd,e,en,ed,r)=>{const t=opt?null:tm[k++];
     if(b){const u=unitByNo(+bn);return `<span class="tok tokb">[Battle: ${esc(u&&u.name?u.name:"b"+bn+(u?"":" ?"))} (${+bd}s)]</span>`}
-    if(e){const ev=eventByNo(+en);return `<span class="tok toke">[Event: ${esc(ev&&ev.name?ev.name:"e"+en+(ev?"":" ?"))}${opt?"":` (${t!=null?Math.round(t):0}s)`}]</span>`}
+    if(e){const ev=eventByNo(+en),nm=esc(ev&&ev.name?ev.name:"e"+en+(ev?"":" ?"));
+      // !(e1,20): the event's own duration; !(e1): the time it happens, as before, with an editor-only nudge towards the timed form
+      if(ed!=null)return `<span class="tok toke">[Event: ${nm} (${+ed}s)]</span>`+(t&&t.over?` <span class="tok tokx">[Exceeded Event Time]</span>`:"");
+      return `<span class="tok toke">[Event: ${nm}${opt?"":` (${t?Math.round(t.t):0}s)`}]</span>`+(isEdit()?` <span class="tok tokold" title="Write !(e${+en},seconds) to give this event its own duration">[Outdated]</span>`:"")}
     return `<span class="tok tokr">[Rest: ${+r}s]</span>`});
   const d=actsDOM(html);
   for(const line of actLines(d)){const m=lineText(line).match(OPTRE);let at=m?m[1].length:-1;
@@ -953,6 +962,7 @@ function battleChartSVG(){
     S.bands.forEach(b=>{svg.append(SV("rect",{x:X(b.t0),y:Tp,width:Math.max(2,X(b.t1)-X(b.t0)),height:B-Tp,fill:"#F4CCCC","fill-opacity":.6}),SV("text",{x:(X(b.t0)+X(b.t1))/2,y:Tp+22,"text-anchor":"middle","font-size":18,fill:"#9C2A1F","font-weight":700},"b"+b.no))});
     S.ends.forEach(e=>svg.append(SV("line",{x1:X(e.t),x2:X(e.t),y1:Tp,y2:B,stroke:"#9AA7BD","stroke-width":1.5,"stroke-dasharray":"6 6"}),SV("text",{x:X(e.t)-6,y:B-10,"text-anchor":"end","font-size":16,fill:"#5A6577"},pad(e.i+1,2))));
     svg.append(SV("polyline",{points:S.pts.map(p=>`${X(p.t)},${Y(p.I)}`).join(" "),fill:"none",stroke:"#C0504D","stroke-width":4,"stroke-linejoin":"round"}));
+    S.evs.forEach(e=>{if(e.t1>e.t)svg.append(SV("rect",{x:X(e.t),y:Tp,width:Math.max(2,X(e.t1)-X(e.t)),height:B-Tp,fill:"#D9EAD3","fill-opacity":.6}))});
     S.evs.forEach(e=>{const x=X(e.t),y=Y(e.I);svg.append(SV("path",{d:`M${x} ${y-14} L${x+11} ${y+6} L${x-11} ${y+6} Z`,fill:"#38761D"}),SV("text",{x,y:y-22,"text-anchor":"middle","font-size":18,fill:"#38761D","font-weight":700},"e"+e.no))});
   }else svg.append(SV("text",{x:(L+Rr)/2,y:(Tp+B)/2,"text-anchor":"middle","font-size":26,fill:"#8C8C8C"},"[Auto-generated from !(b#,ss) / !(ss) / !(e#) in Mission Walkthrough actions]"));
   let x=1000;x=legendItem(svg,x,"Battle",x=>svg.append(SV("rect",{x,y:30,width:50,height:20,fill:"#F4CCCC"})));
@@ -1182,7 +1192,7 @@ function battleEditor(){
     body.append(sec("Beats Timeline types",h("p",{class:"hint",style:"margin:0"},"Each Mission Walkthrough subsection picks one of these; it appears in brackets after the Brief and colours the Beats Timeline."),
       h("table",{class:"bt"},h("tbody",null,types.map((t,i)=>h("tr",null,h("td",null,IN(t.name,v=>{t.name=v},{ph:"Type name"})),h("td",{style:"width:40px"},X(()=>types.splice(i,1))))))),
       h("div",null,h("button",{class:"btn",onclick:()=>{types.push({id:uid(),name:""});draw()}},"+ Add type"))));
-    body.append(h("p",{class:"hint"},"In Mission Walkthrough action lists type !(b1,45) for 45 s of combat unit b1, !(30) for 30 s of rest, and !(e2) for event e2. Numbers stay fixed when units or events are removed, so existing references keep working."));
+    body.append(h("p",{class:"hint"},"In Mission Walkthrough action lists type !(b1,45) for 45 s of combat unit b1, !(30) for 30 s of rest, and !(e2,15) for event e2 lasting 15 s (flagged [Exceeded Event Time] if it runs past the subsection's longest duration). The older !(e2) still works and shows when the event happens. Numbers stay fixed when units or events are removed, so existing references keep working."));
   }
   draw();
   modal("Battle data",body,[{label:"Cancel"},{label:"Apply",pri:true,run:()=>{doc.battle=B;doc.beats.types=types.filter(t=>t.name.trim()||true);autosave();render();toast("Battle data updated")}}],true);
@@ -1479,7 +1489,8 @@ const HELP=[
   ["Background","Pick what each of the three columns holds; the column set to This Level is printed in red."],
   ["!(b1,45)","In Mission Walkthrough actions: a 45 s battle with combat unit b1, shown as [Battle: name (45s)]."],
   ["!(30)","A 30 s rest; intensity decays during it, shown as [Rest: 30s]."],
-  ["!(e1)","Event e1, shown as [Event: name (time it happens)]."],
+  ["!(e1,20)","Event e1 lasting 20 s, shown as [Event: name (20s)]; its time counts towards the subsection, and [Exceeded Event Time] marks one that runs past the subsection's longest duration."],
+  ["!(e1)","Older form: event e1, shown as [Event: name (time it happens)]. While editing it carries an [Outdated] note, which is never exported."],
   ["? action","An action starting with ? (after its number) is optional: shown as a grey [Option] and left out of every statistic."],
   ["PO camera","+ Camera on a PO entry stores the level file, Location and Rotation; paste both from Unreal at once. Click Loc or Rot to copy it for pasting into Unreal."],
   ["Characters","Three to a row; a second row shares the page while it fits, otherwise it starts a new page."],
