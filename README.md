@@ -42,6 +42,8 @@ The `Mock_POI/` folder provides a complete sample mission (a fictional level "Ex
 | [`POI_5.10.1_Exposed_MDD.pptx`](Mock_POI/POI_5.10.1_Exposed_MDD.pptx) | Exported PPT presentation (excluding cover) |
 | [`POI_5.10.1_Exposed_MDD.pdf`](Mock_POI/POI_5.10.1_Exposed_MDD.pdf) | Exported PDF document |
 
+The sample uses every feature: optional actions, partly filled walkthrough images (mixed export layout), PO entries with Unreal cameras and a pending Finish Time, Appendices A–C with captions, cell images, global guidelines and cites, and a revision that logs Appendix B/C changes. The whole document is AI-generated, as its cover Contact says.
+
 Syntax notes from the example:
 
 **Hierarchy & Numbering**: Hierarchy is set to `Season 5` → `Episode 10`, Level Number is `1`, yielding a cover identifier of `5.10.1`. Headers display the name of each hierarchy level.
@@ -49,7 +51,7 @@ Syntax notes from the example:
 **Version String**: Formatted as `Ver.Build.Major.Minor-Date.CumulativeSaves`. The example version is:
 
 ```
-Ver.1.01.0001-2026.10.31.0000,0004
+Ver.1.01.0002-2026.11.02.0000,0005
 ```
 
 **Combat / Rest / Event Tags in Mission Walkthrough**: Enter compact tags inside Actions. During export, they are converted into human-readable text and plotted on the battle intensity curve.
@@ -58,6 +60,7 @@ Ver.1.01.0001-2026.10.31.0000,0004
 Sit at the window table (look at the camera to talk) !(20)
 Order a coffee, waitress greets Finch !(e1)
 Defend the safe house as Reese and Shaw !(b2,35)
+? Read the newspaper left on the counter !(10)
 ```
 
 | Tag | Meaning | Export Display |
@@ -73,7 +76,7 @@ Units, enemy types, events, and intensity decay rates (default: -2 per 30s) are 
 
 | Appendix | Content |
 | --- | --- |
-| A - Preceding Process Result | Process name, 1 / 3 / 9 captioned 16:9 images (or none) and three text blocks. Filled images move to the front. Read-only once the initial version is marked complete. |
+| A - Preceding Process Result | The main output of the previous stage, such as level art, a 2D layout sketch, mood design, a 3D sketch, decoration or white-boxing: process name, 1 / 3 / 9 captioned 16:9 images (or none) and three text blocks. Filled images move to the front. Read-only once the initial version is marked complete. |
 | B - Project Specification | Item / Spec / Info table, e.g. `Character move speed, jump distance` / `10 UU/s, 400 UU`. **+ Image** adds a picture to a cell. |
 | C - Applied Guidelines | Index / Name / Brief / Detail. Ticked **Global** guidelines come first with red indices. **+ Cite** takes a web address or a BibTeX entry; cites are listed in two columns under the table. **Copy global guidelines** copies them as CSV; **Import CSV from clipboard** reads CSV or TSV (`Global,Name,Brief,Detail,Cite`). |
 | D - PO List | Paint-over entries with PO / Finish times and optional Unreal camera. |
@@ -134,6 +137,8 @@ Pushing to `main` triggers GitHub Actions ([`.github/workflows/static.yml`](.git
 | [`POI_5.10.1_Exposed_MDD.pptx`](Mock_POI/POI_5.10.1_Exposed_MDD.pptx) | 导出的 PPT（不含封面页） |
 | [`POI_5.10.1_Exposed_MDD.pdf`](Mock_POI/POI_5.10.1_Exposed_MDD.pdf) | 导出的 PDF |
 
+示例用到了所有功能：可选动作、只放了部分图片的 Walkthrough 小节（导出时混排）、带 Unreal 摄像机和未完成 Finish Time 的 PO、带题注 / 单元格图片 / 全局规范 / 引用的 Appendix A–C，以及一次记录了 Appendix B、C 改动的修订。整份文档完全由 AI 生成，封面的 Contact 也注明了这一点。
+
 示例中的一些写法：
 
 **层级与编号**：层级为 `Season 5` → `Episode 10`，关卡序号为 `1`，所以封面编号为 `5.10.1`，页眉显示各层名称。
@@ -141,7 +146,7 @@ Pushing to `main` triggers GitHub Actions ([`.github/workflows/static.yml`](.git
 **版本号**：格式为 `Ver.Build.Major.Minor-日期.累计保存次数`，示例当前版本为：
 
 ```
-Ver.1.01.0001-2026.10.31.0000,0004
+Ver.1.01.0002-2026.11.02.0000,0005
 ```
 
 **Mission Walkthrough 中的战斗 / 休息 / 事件标记**：在 Actions 里写简短标记，导出时会替换成可读文字，并计入战斗强度曲线。
@@ -150,6 +155,7 @@ Ver.1.01.0001-2026.10.31.0000,0004
 Sit at the window table (look at the camera to talk) !(20)
 Order a coffee, waitress greets Finch !(e1)
 Defend the safe house as Reese and Shaw !(b2,35)
+? Read the newspaper left on the counter !(10)
 ```
 
 | 标记 | 含义 | 导出显示 |
@@ -165,7 +171,7 @@ Defend the safe house as Reese and Shaw !(b2,35)
 
 | 附录 | 内容 |
 | --- | --- |
-| A - Preceding Process Result | 前置流程名称、1 / 3 / 9 张带题注的 16:9 图片（也可不放图）和三段文字，已上传的图片自动排到前面。标记初版完成后不可再改。 |
+| A - Preceding Process Result | 前置阶段的主要产出，如 Level Art、2D Layout Sketch、Mood Design、3D Sketch、Decoration、Level White-boxing：流程名称、1 / 3 / 9 张带题注的 16:9 图片（也可不放图）和三段文字，已上传的图片自动排到前面。标记初版完成后不可再改。 |
 | B - Project Specification | Item / Spec / Info 三列表格，如 `角色移动速度、跳跃距离` / `10 UU/s, 400 UU`。**+ Image** 可在单元格中插图。 |
 | C - Applied Guidelines | Index / Name / Brief / Detail 四列。勾选 **Global** 的条目排在最前，序号标红。**+ Cite** 可插入网页地址或 BibTeX，引用在表格下方分两栏列出。**Copy global guidelines** 把全局条目复制为 CSV；**Import CSV from clipboard** 从剪贴板导入 CSV 或 TSV（`Global,Name,Brief,Detail,Cite`）。 |
 | D - PO List | Paint-over 记录，含 PO / Finish 时间和可选的 Unreal 摄像机信息。 |
