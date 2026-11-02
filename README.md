@@ -14,10 +14,10 @@ A purely browser-based **Mission Design Document (MDD)** quick editor. Single HT
 ### Features
 
 - **WYSIWYG A4 Landscape Pages**: Click grey `[placeholders]` to edit directly. Selected text supports bold, italic, bullet lists, or red highlight (used to highlight "Current Level").
-- **Fixed MDD Section Structure**: Overview (Cover) → Context → Mission Walkthrough → Layout Plan Legends → 2D Layout Plan → Flow → Beats → Battle Intensity → Appendix A (Revision History) → Appendix B (PO List).
+- **Fixed MDD Section Structure**: Overview (Cover) → Context → Mission Walkthrough → Layout Plan Legends → 2D Layout Plan → Flow → Beats → Battle Intensity → Appendices A–E (see below).
 - **Image Handling**: Click image slots to upload, drag-and-drop, or paste from clipboard; supports rotation, flipping, cropping, and brightness/contrast adjustments. Original images are always preserved at full resolution.
 - **Auto-generated Charts**: Flow diagrams, Beats Chart, Beats Timeline, and Battle Intensity curves are all dynamically generated based on your input data.
-- **Version Control**: Once marked as initial version complete, each subsequent save performs field-by-field diff comparison against the previous version, automatically logging changes, reasons, and remarks into Appendix A.
+- **Version Control**: Once marked as initial version complete, each subsequent save performs field-by-field diff comparison against the previous version, automatically logging changes, reasons, and remarks into Appendix E.
 - **Export Options**: Word (.docx), PPT (.pptx), and PDF — all formatted as A4 landscape with headers and footers.
 - **Project Files**: `Download project` bundles everything into a `.zip` archive (`project.json` + `pic/` source images folder). Load it anytime via `Open project` to resume editing. Drafts are also auto-saved in your browser (IndexedDB).
 
@@ -69,6 +69,16 @@ Defend the safe house as Reese and Shaw !(b2,35)
 
 Units, enemy types, events, and intensity decay rates (default: -2 per 30s) are configured under **Battle data** in the top bar.
 
+### Appendices
+
+| Appendix | Content |
+| --- | --- |
+| A - Preceding Process Result | Process name, 1 / 3 / 9 captioned 16:9 images (or none) and three text blocks. Filled images move to the front. Read-only once the initial version is marked complete. |
+| B - Project Specification | Item / Spec / Info table, e.g. `Character move speed, jump distance` / `10 UU/s, 400 UU`. **+ Image** adds a picture to a cell. |
+| C - Applied Guidelines | Index / Name / Brief / Detail. Ticked **Global** guidelines come first with red indices. **+ Cite** takes a web address or a BibTeX entry; cites are listed in two columns under the table. **Copy global guidelines** copies them as CSV; **Import CSV from clipboard** reads CSV or TSV (`Global,Name,Brief,Detail,Cite`). |
+| D - PO List | Paint-over entries with PO / Finish times and optional Unreal camera. |
+| E - Minor Modify List | Filled in automatically on every save, including changes to Appendix B and C. |
+
 ### Tips
 
 - **Hide empty on export**: When enabled, empty fields, placeholder images, and entirely empty sections are omitted from export. When disabled, placeholders are preserved to export as a blank template.
@@ -96,10 +106,10 @@ Pushing to `main` triggers GitHub Actions ([`.github/workflows/static.yml`](.git
 ### 功能一览
 
 - **所见即所得的 A4 横版页面**：点击灰色 `[占位符]` 直接输入，选中文字可加粗、斜体、列表，或标红（标记“当前关卡”）。
-- **固定的 MDD 章节结构**：Overview（封面）→ Context → Mission Walkthrough → Layout Plan Legends → 2D Layout Plan → Flow → Beats → Battle Intensity → Appendix A（修改记录）→ Appendix B（PO 列表）。
+- **固定的 MDD 章节结构**：Overview（封面）→ Context → Mission Walkthrough → Layout Plan Legends → 2D Layout Plan → Flow → Beats → Battle Intensity → Appendix A–E（见下文）。
 - **图片**：点击图片框上传，也可以拖拽或粘贴；支持旋转、翻转、裁剪、亮度/对比度调节，原图始终按原分辨率保留。
 - **自动生成的图表**：流程图（Flow）、节奏图表（Beats Chart）、节奏时间线（Beats Timeline）、战斗强度曲线，都根据填写的数据自动绘制。
-- **版本管理**：标记初版完成后，每次保存都会和上一版逐字段比对，把改动连同原因、备注写入 Appendix A。
+- **版本管理**：标记初版完成后，每次保存都会和上一版逐字段比对，把改动连同原因、备注写入 Appendix E。
 - **导出**：Word（.docx）、PPT（.pptx）、PDF，均为 A4 横版并带页眉页脚。
 - **项目文件**：`Download project` 打包为 `.zip`（`project.json` + `pic/` 原图文件夹），之后可用 `Open project` 打开继续编辑。草稿也会自动保存在浏览器里（IndexedDB）。
 
@@ -150,6 +160,16 @@ Defend the safe house as Reese and Shaw !(b2,35)
 | `? ...` | 以 `?` 开头（不计序号）的条目为可选项，不计入任何统计 | 灰色 `[Option] ...` |
 
 战斗单位、敌人类型、事件、强度衰减规则（默认每 30 秒 -2）都在顶部的 **Battle data** 里设置。
+
+### 附录
+
+| 附录 | 内容 |
+| --- | --- |
+| A - Preceding Process Result | 前置流程名称、1 / 3 / 9 张带题注的 16:9 图片（也可不放图）和三段文字，已上传的图片自动排到前面。标记初版完成后不可再改。 |
+| B - Project Specification | Item / Spec / Info 三列表格，如 `角色移动速度、跳跃距离` / `10 UU/s, 400 UU`。**+ Image** 可在单元格中插图。 |
+| C - Applied Guidelines | Index / Name / Brief / Detail 四列。勾选 **Global** 的条目排在最前，序号标红。**+ Cite** 可插入网页地址或 BibTeX，引用在表格下方分两栏列出。**Copy global guidelines** 把全局条目复制为 CSV；**Import CSV from clipboard** 从剪贴板导入 CSV 或 TSV（`Global,Name,Brief,Detail,Cite`）。 |
+| D - PO List | Paint-over 记录，含 PO / Finish 时间和可选的 Unreal 摄像机信息。 |
+| E - Minor Modify List | 每次保存自动记录，包括 Appendix B、C 的改动。 |
 
 ### 小贴士
 

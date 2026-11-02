@@ -104,9 +104,12 @@ span.f{display:inline;min-height:0}
 .pdfcap .slot[data-img]{background-image:none!important;border-color:transparent!important}
 .pdfcap .slot[data-src]{background-image:none!important}
 .toc{display:grid;grid-template-columns:1fr 1fr;column-gap:5mm}
-.toc .tl{display:flex;gap:1mm;white-space:nowrap}
-.toc .tl .tt{overflow:hidden;text-overflow:ellipsis}
-.toc .tl .dots{flex:1;border-bottom:.6pt dotted #7F7F7F;margin-bottom:.9mm;min-width:3mm}
+.toc .tl{display:flex;gap:1mm;align-items:flex-end}
+.toc .tl .tt{display:flex;min-width:0}
+.toc .tl .tn{flex:none;white-space:pre}
+.toc .tl .tx{min-width:0;overflow-wrap:anywhere}
+.toc .tl .pg{flex:none}
+.toc .tl .dots{flex:1 0 3mm;border-bottom:.6pt dotted #7F7F7F;margin-bottom:.9mm}
 .toc .tl.l1{font-weight:700;color:var(--h3)}
 .toc .tl.l2 .tt{padding-left:3mm}
 .chart{width:100%;aspect-ratio:16/9;display:block}
@@ -115,6 +118,10 @@ span.f{display:inline;min-height:0}
 .tbl .th{background:var(--th);font-weight:700;color:var(--h3)}
 .tbl .thumb{width:100%;aspect-ratio:16/9}
 .tbl .tr{display:contents}
+.gchk{margin:0 1mm 0 0;vertical-align:middle;accent-color:#C00000}
+.cites{color:#2E74B5}
+.tbl .cimg{max-width:56mm;margin-top:1mm}
+.edit .locked .slot,.edit .locked .slot:hover{cursor:default;border-color:var(--slotline)}
 
 /* ---------- floating + modal ---------- */
 #rtb{position:fixed;display:none;gap:2px;padding:3px;background:var(--panel);border:1px solid var(--line);border-radius:5px;box-shadow:0 4px 14px rgba(0,0,0,.18);z-index:40}
@@ -282,13 +289,17 @@ const lsGet=(k,d)=>{try{const v=localStorage.getItem(k);return v==null?d:JSON.pa
 const lsSet=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(_){}};
 
 /* ---------------- model ---------------- */
-const SEC={cover:"Overview",ctx:"Context",walk:"Mission Walkthrough",leg:"Layout Plan Legends",plan:"2D Layout Plan",flow:"Flow",beats:"Beats",bat:"Battle Intensity",appA:"Appendix A - Minor Modify List",appB:"Appendix B - PO List"};
+const SEC={cover:"Overview",ctx:"Context",walk:"Mission Walkthrough",leg:"Layout Plan Legends",plan:"2D Layout Plan",flow:"Flow",beats:"Beats",bat:"Battle Intensity",
+  apre:"Appendix A - Preceding Process Result",aspec:"Appendix B - Project Specification",aguide:"Appendix C - Applied Guidelines",appB:"Appendix D - PO List",appA:"Appendix E - Minor Modify List"};
 const BGK={campaign:{t:"Campaign",ph:"[Campaign backstory and the overall conflict]"},prev:{t:"Previous Levels",ph:"[What happened in the previous levels]"},
   this:{t:"This Level",ph:"[What happens in this level (shown in red)]"},next:{t:"Following Levels",ph:"[What this level sets up for the following levels]"}};
 const EDIT0={q:0,fine:0,fh:false,fv:false,crop:null,b:100,c:100,s:100};
 function newWalk(){return {id:uid(),brief:"",cat:"",desc:"",int:"",dmin:"",dmax:"",acts:"",m:["","","",""],r:["",""]}}
 function newChar(){return {id:uid(),name:"",img:"",role:"",text:""}}
 const newNode=(label)=>({id:uid(),label,index:"",name:""});
+const newPre=()=>({name:"",n:3,imgs:Array.from({length:9},()=>({img:"",cap:""})),text:["","",""]});
+const newSpec=()=>({id:uid(),item:"",spec:"",info:""});
+const newRule=()=>({id:uid(),g:false,name:"",brief:"",detail:"",cites:[]});
 function newDoc(){
   return {schema:3,
     meta:{game:"",path:[newNode("Campaign"),newNode("Chapter")],level:"",levelIndex:"",owner:"",contact:"",escalate:"",created:""},
@@ -302,6 +313,7 @@ function newDoc(){
     flow:{mode:"both",charts:[newChart("Main Flow")],guide:[newGuide(),newGuide(),newGuide()]},
     beats:{timeline:"",tlMode:"auto",types:[{id:"tp_battle",name:"Battle"},{id:"tp_explore",name:"Exploration"},{id:"tp_puzzle",name:"Puzzle"}]},
     battle:{enemyTypes:[],units:[],events:[],decay:{amount:2,per:30}},
+    appx:{pre:newPre(),spec:[newSpec(),newSpec(),newSpec()],guide:[newRule(),newRule(),newRule()]},
     log:[],po:[],committed:null,images:{}};
 }
 let doc=newDoc();
@@ -441,6 +453,9 @@ const E={
   chart:c=>c.mode==="image"?!hasI(c.img):!c.nodes.some(n=>n.type!=="start"&&n.type!=="end"),
   guide:g=>!(hasR(g.text)||hasI(g.img)),
   po:r=>!(hasI(r.po)||hasI(r.before)||hasI(r.after)||hasR(r.reason)||hasR(r.loc)||r.cam),
+  pre:()=>{const P=doc.appx.pre;return !(has(P.name)||P.text.some(hasR)||P.imgs.some(x=>hasI(x.img)||has(x.cap)))},
+  spec:r=>!["item","spec","info"].some(k=>hasR(r[k])||hasI(r[k+"Img"])),
+  rule:r=>!(has(r.name)||hasR(r.brief)||hasI(r.briefImg)||hasR(r.detail)||(r.cites||[]).length),
 };
 
 /* ---------------- render: helpers ---------------- */
@@ -499,15 +514,22 @@ function lastEditText(){const s=doc.state.lastEdit||doc.meta.created;if(!s)retur
 const chunk=(a,n)=>{const r=[];for(let i=0;i<a.length;i+=n)r.push(a.slice(i,i+n));return r};
 let NOCOVER=false;
 let CHAR_SOLO=new Set();   // character row indices that start their own page
-let TBL_BREAKS={appA:new Set(),appB:new Set()};   // appendix row indices that start a new page, measured by renderInto
+const newBreaks=()=>({aspec:new Set(),aguide:new Set(),appB:new Set(),appA:new Set()});
+let TBL_BREAKS=newBreaks();   // appendix row indices that start a new page, measured by renderInto
 const splitAt=(a,brk)=>{const r=[];a.forEach((x,i)=>{if(!r.length||brk.has(i))r.push({rows:[],r0:i});r[r.length-1].rows.push(x)});return r};
 /** where an overflowing appendix page should break: rows are packed by measured height; the first page keeps what sits above its table, later pages repeat only the header row */
 function tableBreaks(pg,p){const bb=$(".body",pg).getBoundingClientRect();const trs=$$(".tbl>.tr",pg);if(trs.length<3)return [];
   // .tr is display:contents, so a row's box is the union of its cells
   const box=tr=>{const rs=[...tr.children].map(c=>c.getBoundingClientRect());return {top:Math.min(...rs.map(r=>r.top)),bottom:Math.max(...rs.map(r=>r.bottom))}};
   const hd=box(trs[0]),rows=trs.slice(1).map(box);
-  let start=rows[0].top,span=bb.bottom-start-2;const out=[];
-  rows.forEach((r,i)=>{if(i>0&&r.bottom-start>span){out.push(p.r0+i);start=r.top;span=bb.height-(hd.bottom-hd.top)-4}});return out}
+  // cites listed under the table go with their row; the list is split in two columns by count, under a heading
+  const nb=$(".notes",pg),nr=nb&&$(".row",nb);const head=nr?nr.getBoundingClientRect().top-nb.getBoundingClientRect().top+9:0;
+  const nh=i=>$$(`[data-note-row="${p.r0+i}"]`,pg).map(el=>el.getBoundingClientRect().height);
+  const sum=a=>a.reduce((t,v)=>t+v,0)+Math.max(0,a.length-1)*6;const notesH=a=>{if(!a.length)return 0;const k=Math.ceil(a.length/2);return head+Math.max(sum(a.slice(0,k)),sum(a.slice(k)))};
+  const ab=$(".body>.addbar:last-child",pg);const tail=ab?ab.getBoundingClientRect().height+9:0;
+  let start=rows[0].top,span=bb.bottom-start-2-tail,acc=[];const out=[];
+  rows.forEach((r,i)=>{const n=nh(i);if(i>0&&r.bottom-start+notesH([...acc,...n])>span){out.push(p.r0+i);start=r.top;span=bb.height-(hd.bottom-hd.top)-4-tail;acc=[]}acc.push(...n)});return out}
+const sortRules=a=>[...a.filter(r=>r.g),...a.filter(r=>!r.g)];
 function layout(){
   const P=[],toc=[];const add=p=>{P.push(p);return P.length};const show=(emptyFn)=>!HIDE||!emptyFn();
   let n=0;if(!NOCOVER){n=add({t:"cover",sec:SEC.cover});toc.push({l:1,num:"1",t:"Overview",p:n})}
@@ -532,7 +554,7 @@ function layout(){
   const charts=fm==="guide"?[]:doc.flow.charts.filter(c=>!HIDE||!E.chart(c));
   charts.forEach((c,k)=>{n=add({t:"chart",sec:SEC.flow,chart:c,first:ff});flowH();toc.push({l:2,num:"6."+(k+1),t:c.name,ph:"[Flow Chart Name]",p:n})});
   if(fm!=="chart"){const gi=doc.flow.guide.filter(g=>!HIDE||!E.guide(g));const gc=chunk(gi,6);if(!gc.length&&!HIDE)gc.push([]);
-    gc.forEach((g,i)=>{n=add({t:"guide",sec:SEC.flow,items:g,first:ff,gfirst:i===0,last:i===gc.length-1});flowH();if(i===0)toc.push({l:2,num:"6."+(charts.length+1),t:"Breadcrumbs & Exploration Guidance",p:n})})}
+    gc.forEach((g,i)=>{n=add({t:"guide",sec:SEC.flow,items:g,first:ff,gfirst:i===0,last:i===gc.length-1});flowH();if(i===0)toc.push({l:2,num:"6."+(charts.length+1),t:"Exploration Guidance",p:n})})}
   const tlHas=doc.beats.tlMode==="image"?hasI(doc.beats.timeline):timelineData().has;
   const b1=!HIDE||chartData().has,b2=!HIDE||BSC.has,b3=!HIDE||tlHas;let bf=true;const beatH=()=>{if(bf)toc.push({l:1,num:"7",t:"Beats",p:n});const f=bf;bf=false;return f};
   if(b1){n=add({t:"beats1",sec:SEC.beats,h1:bf});beatH()}
@@ -543,10 +565,17 @@ function layout(){
   if(!HIDE||B.events.length){const ec=chunk(B.events,16);if(!ec.length)ec.push([]);ec.forEach((rows,i)=>{n=add({t:"bat2",sec:SEC.bat,rows,first:i===0,last:i===ec.length-1,h1:tf});batH()})}
   if(!HIDE||BSC.has){const fr=[...B.units.map(u=>({k:"b",u})),...B.events.map(e=>({k:"e",u:e}))];const rc=chunk(fr,20);if(!rc.length)rc.push([]);
     rc.forEach((rows,i)=>{n=add({t:"bat3",sec:SEC.bat,rows,first:i===0,h1:tf});batH()})}
-  const lc=splitAt(doc.log,TBL_BREAKS.appA);if(!lc.length&&!HIDE)lc.push({rows:[],r0:0});
-  lc.forEach(({rows,r0},i)=>{n=add({t:"appA",sec:SEC.appA,rows,r0,first:i===0});if(i===0)toc.push({l:1,num:"A",t:"Minor Modify List",p:n})});
-  const po=HIDE?doc.po.filter(r=>!E.po(r)):doc.po;const pc=splitAt(po,TBL_BREAKS.appB);if(!pc.length&&!HIDE)pc.push({rows:[],r0:0});
-  pc.forEach(({rows,r0},i)=>{n=add({t:"appB",sec:SEC.appB,rows,r0,first:i===0,last:i===pc.length-1});if(i===0)toc.push({l:1,num:"B",t:"PO List",p:n})});
+  // Appendices A-E
+  const X=doc.appx;
+  if(show(E.pre)){n=add({t:"apre",sec:SEC.apre});toc.push({l:1,num:"A",t:"Preceding Process Result",p:n})}
+  const tbl=(t,rows,num,title)=>{const c=splitAt(rows,TBL_BREAKS[t]);if(!c.length&&!HIDE)c.push({rows:[],r0:0});
+    c.forEach(({rows,r0},i)=>{n=add({t,sec:SEC[t],rows,r0,first:i===0,last:i===c.length-1});if(i===0)toc.push({l:1,num,t:title,p:n})})};
+  tbl("aspec",HIDE?X.spec.filter(r=>!E.spec(r)):X.spec,"B","Project Specification");
+  // guidelines: global ones first, zero-padded index; cites numbered in table order
+  const gl=sortRules(X.guide).filter(r=>!HIDE||!E.rule(r));const gw=Math.max(2,String(gl.length).length);let cn=1;
+  tbl("aguide",gl.map((r,i)=>{const o={r,no:pad(i+1,gw),c0:cn};cn+=(r.cites||[]).length;return o}),"C","Applied Guidelines");
+  tbl("appB",HIDE?doc.po.filter(r=>!E.po(r)):doc.po,"D","PO List");
+  tbl("appA",doc.log,"E","Minor Modify List");
   return {P,toc};
 }
 
@@ -557,9 +586,19 @@ function chromeHF(p,N,i){
     h("div",{class:"ftr"},h("div",{"data-x":"t","data-s":"cap"},h("div",null,"Level Layout and Mission Design Document"),own?h("div",null,own):null),
       h("div",{"data-x":"t","data-s":"cap",class:"r"},h("div",null,`${i+1} / ${N}`),le?h("div",null,le):null))];
 }
-function tocBlock(toc){
+/* cover contents that do not fit: Layout Plan Legends 4.2 onwards become "Other Categories", then 2D Layout Plans keep as many as fit and the rest become "Other sub-plans" */
+let TOC_FIT={leg:false,plan:Infinity};
+function fitToc(toc){const out=[];let leg=false,pi=0;
+  for(const e of toc){const sub=e.l===2&&e.num.split(".")[0];
+    if(TOC_FIT.leg&&sub==="4"&&e.num!=="4.1"){if(!leg)out.push({...e,t:"Other Categories"});leg=true;continue}
+    if(sub==="5"&&++pi>TOC_FIT.plan){if(pi===TOC_FIT.plan+1)out.push({...e,t:"Other sub-plans"});continue}
+    out.push(e)}return out}
+function fitCover(cov,toc){TOC_FIT={leg:false,plan:Infinity};if(!cov||!$(".toc",cov))return;const n=toc.filter(e=>e.l===2&&e.num.startsWith("5.")).length;
+  while(overflows(cov)){if(!TOC_FIT.leg)TOC_FIT.leg=true;else if(TOC_FIT.plan>n-2&&n>2)TOC_FIT.plan=n-2;else if(TOC_FIT.plan>1&&TOC_FIT.plan<=n-2)TOC_FIT.plan--;else break;
+    $(".toc",cov).replaceWith(tocBlock(toc))}}
+function tocBlock(toc){toc=fitToc(toc);
   const line=e=>h("div",{"data-x":"t","data-s":"toc",class:"tl l"+e.l,"data-p":e.p},
-    h("span",{class:"tt"},`${e.num}  `,has(e.t)?e.t:(HIDE?"":h("span",{class:"ph"},e.ph||""))),h("span",{class:"dots"}),h("span",{class:"pg"},String(e.p)));
+    h("span",{class:"tt"},h("span",{class:"tn"},`${e.num}  `),h("span",{class:"tx"},has(e.t)?e.t:(HIDE?"":h("span",{class:"ph"},e.ph||"")))),h("span",{class:"dots"}),h("span",{class:"pg"},String(e.p)));
   const half=Math.ceil(toc.length/2);
   return h("div",{class:"toc","data-d":"row",id:"tocBlock"},h("div",{class:"col","data-d":"col",style:"gap:.5mm"},toc.slice(0,half).map(line)),h("div",{class:"col","data-d":"col",style:"gap:.5mm"},toc.slice(half).map(line)));
 }
@@ -582,7 +621,7 @@ R.cover=(p,L)=>{const m=doc.meta;const v=verLabel();
     HR(),
     shown.length?h("div",{class:"row","data-d":"row",style:`grid-template-columns:repeat(${shown.length},${shown.length===3?"1fr":"84mm"});justify-content:center`},
       shown.map(i=>h("div",{class:"col","data-d":"col",style:"height:48mm"},(()=>{const s=I("cover.imgs."+i,"Level Mood / Bird's-eye View 16:9");s.style.height="48mm";s.style.width="auto";s.style.aspectRatio="16/9";return s})()))):null,
-    ROW("1fr 1fr",COL(T("h1","Contents"),tocBlock(L.toc)),ovEls.length?COL(T("h1","Overview"),...nn(ovEls)):COL())
+    (()=>{const r=ROW("1fr 1fr",COL(T("h1","Contents"),tocBlock(L.toc)),ovEls.length?COL(T("h1","Overview"),...nn(ovEls)):COL());r.style.marginTop="auto";return r})()  // sits at the foot of the cover
   ];
 };
 R.ctx1=(p)=>{const out=[p.h1?T("h1","Context"):null,T("h2","Themes and Background")];const A=[],B2=[];
@@ -641,7 +680,7 @@ const flowH1=p=>p.first?h("div",{"data-x":"t","data-s":"h1"},"Flow",flowModeCtl(
 R.chart=(p)=>{const c=p.chart,b="flow.charts."+c.id;const nm=F(b+".name","[Flow Chart Name]",{inline:true});const many=doc.flow.charts.length>1;
   return [flowH1(p),(nm||isEdit())?h("div",{"data-x":"t","data-s":"h2"},nm,ICTL(["chart-edit","Edit chart",c.id],["chart-mode",c.mode==="image"?"Use generated chart":"Use image instead",c.id],["chart-add","+ Add chart",c.id],many?["chart-up","↑",c.id]:null,many?["chart-down","↓",c.id]:null,many?["chart-rm","Remove",c.id]:null)):null,
     c.mode==="image"?I(b+".img","Flow Chart 16:9 Full Frame","16/9","contain"):(()=>{const sv=flowSVG(c);sv.dataset.chart=c.id;return sv})()]};
-R.guide=(p)=>[flowH1(p),p.gfirst?T("h2","Breadcrumbs & Exploration Guidance"):null,
+R.guide=(p)=>[flowH1(p),p.gfirst?T("h2","Exploration Guidance"):null,
   p.items.length?SPLIT(...chunk(p.items,3).map(row=>[GRID(3,row.map(g=>{const b="flow.guide."+g.id;return COL(isEdit()?h("div",null,ICTL(["guide-up","←",g.id],["guide-down","→",g.id],["guide-rm","Remove",g.id])):null,I(b+".img","Guidance Image","16/9","contain"),F(b+".text","[Breadcrumbs, landmarks, lighting and sight-lines guiding the player]",{rich:true}))}))])):null,
   (isEdit()&&p.last)?h("div",{class:"addbar"},h("button",{"data-act":"guide-add"},"+ Add guidance item")):null];
 R.beats1=(p)=>[p.h1?T("h1","Beats"):null,T("h2","Beats Chart (Time Based)"),chartSVG()];
@@ -680,7 +719,7 @@ function valCell(v){const src=v&&(v.thumb?urlOf(v.thumb):v.img);
   if(v&&(v.img===null||v.thumb===null))return h("div",{"data-x":"t","data-s":"small"},h("span",{class:"ph"},"(no image)"));
   return h("div",{"data-x":"t","data-s":"small"},v?(v.t||"—"):"")}
 R.appA=(p)=>{const cols="13% 7% 14% 23% 23% 20%";const hd=["Version","Section","Reason (Issue / Feedback)","Before","After","Change Notes"];
-  return [p.first?T("h1","Appendix A - Minor Modify List"):null,(p.first&&isEdit())?T("cap","Recorded automatically on every save after the initial version. Newest first."):null,
+  return [p.first?T("h1",SEC.appA):null,(p.first&&isEdit())?T("cap","Recorded automatically on every save after the initial version, including changes to Appendix B and C. Newest first."):null,
     h("div",{class:"tbl","data-d":"tbl",style:`grid-template-columns:${cols}`},
       h("div",{class:"tr","data-d":"tr"},hd.map(x=>h("div",{class:"td th","data-d":"td"},T("small",x)))),
       p.rows.length?p.rows.map(r=>h("div",{class:"tr","data-d":"tr"},
@@ -689,6 +728,92 @@ R.appA=(p)=>{const cols="13% 7% 14% 23% 23% 20%";const hd=["Version","Section","
         h("div",{class:"td","data-d":"td"},valCell(r.after)),h("div",{class:"td","data-d":"td"},T("small",r.note||"—"))))
       :h("div",{class:"tr","data-d":"tr"},["[Ver.]","[x.x]","[Issue # / Feedback]","[Before]","[After]","[Change Notes]"].map(x=>h("div",{class:"td","data-d":"td"},T("small",h("span",{class:"ph"},x))))))];
 };
+/* Appendix A: result of the preceding process. 1 image sits centred between text, 3 sit in a row above three text columns, 9 form a 3x3 grid over a short text band, none leaves three text columns.
+   Filled images move to the front. The whole page is read-only once the initial version is marked complete. */
+const PRE_TX=["[Result summary]","[Findings and constraints]","[Hand-off notes]"];
+R.apre=()=>{const P=doc.appx.pre,lock=isEdit()&&doc.state.init,pm=MODE;if(lock)MODE="export";
+  try{const ks=P.imgs.map((_,k)=>k);let show=[...ks.filter(k=>hasI(P.imgs[k].img)),...ks.filter(k=>!hasI(P.imgs[k].img))].slice(0,P.n);if(HIDE)show=show.filter(k=>hasI(P.imgs[k].img));
+    const fig=(k,hgt)=>{const s=I(`appx.pre.imgs.${k}.img`,"Result Image 16:9");if(hgt){s.style.height=hgt;s.style.width="auto"}
+      const c=F(`appx.pre.imgs.${k}.cap`,"[Caption]",{s:"cap"});if(c)c.style.textAlign="center";return COL(s,c)};
+    const tx=[0,1,2].map(k=>F(`appx.pre.text.${k}`,PRE_TX[k],{rich:true}));const txRow=()=>tx.some(Boolean)?ROW("1fr 1fr 1fr",...tx.map(x=>COL(x))):null;
+    const m=show.length,n=m?P.n:0;let body;
+    if(n===1)body=[ROW("1fr 2.2fr 1fr",COL(tx[0]),fig(show[0]),COL(tx[1],tx[2]))];
+    else if(n===3){const g=GRID(m,show.map(k=>fig(k)));g.style.gridTemplateColumns=`repeat(${m},minmax(0,87mm))`;g.style.justifyContent="center";body=[g,txRow()]}
+    else if(n===9){const g=GRID(Math.min(3,m),show.map(k=>fig(k,"37mm")));g.style.gridTemplateColumns=`repeat(${Math.min(3,m)},auto)`;g.style.justifyContent="center";body=[g,txRow()]}
+    else body=[txRow()];
+    const nm=F("appx.pre.name","[Process Name]",{inline:true});
+    const sel=isEdit()?h("select",{class:"ctl walkcat","data-act":"pre-n","aria-label":"Number of images"},[[1,"1 image"],[3,"3 images"],[9,"9 images"],[0,"No images"]].map(([v,t])=>h("option",{value:v,selected:P.n===v},t))):null;
+    const out=[T("h1",SEC.apre),(nm||sel)?h("div",{"data-x":"t","data-s":"h2"},nm,sel):null,
+      lock?T("cap","Locked: the preceding process result cannot change after the initial version."):null,...body];
+    if(lock)out.forEach(el=>el&&el.classList.add("locked"));return out}
+  finally{MODE=pm}};
+const cimg=s=>{if(s)s.classList.add("cimg");return s};
+/* Appendix B: free table of project-wide specs; any cell can also hold an image */
+R.aspec=(p)=>{const cell=x=>h("div",{class:"td","data-d":"td"},x);
+  const part=(r,k,ph,ctl)=>{const b=`appx.spec.${r.id}.${k}`;const im=(k+"Img") in r;
+    return cell([F(b,ph,{rich:true,s:"small"}),im?cimg(I(b+"Img",k[0].toUpperCase()+k.slice(1)+" Image","16/9","contain")):null,ICTL(...(ctl||[]),["spec-img",im?"− Image":"+ Image",r.id+":"+k])])};
+  return [p.first?T("h1",SEC.aspec):null,
+    h("div",{class:"tbl","data-d":"tbl",style:"grid-template-columns:22% 24% 54%"},h("div",{class:"tr","data-d":"tr"},["Item","Spec","Info"].map(thD)),
+      p.rows.length?p.rows.map(r=>h("div",{class:"tr","data-d":"tr"},
+        part(r,"item","[e.g. Character move speed, jump distance]",[["spec-up","↑",r.id],["spec-down","↓",r.id],["spec-rm","Remove",r.id]]),
+        part(r,"spec","[e.g. 10 UU/s, 400 UU]"),
+        part(r,"info","[e.g. Red chemicals on the exterior give an explosive affordance; keep it lit in night levels]")))
+      :h("div",{class:"tr","data-d":"tr"},["[Item]","[Spec]","[Info]"].map(phCell))),
+    (isEdit()&&p.last)?h("div",{class:"addbar"},h("button",{"data-act":"spec-add"},"+ Add row")):null]};
+/* Appendix C: design guidance that does not fit the body. Global guidelines come first with red indices; cites are listed under the table on the page that uses them */
+function bibFields(s){const o={};for(const m of s.matchAll(/(\w+)\s*=\s*(?:\{((?:[^{}]|\{[^{}]*\})*)\}|"([^"]*)"|(\w+))/g))o[m[1].toLowerCase()]=(m[2]??m[3]??m[4]).replace(/[{}]/g,"").replace(/\s+/g," ").trim();return o}
+function fmtCite(c){const s=String(c.raw||"").trim();const dot=x=>x.replace(/[.\s]+$/,"");
+  if(/^@\w+\s*\{/.test(s)){const f=bibFields(s.replace(/^@\w+\s*\{[^,]*,/,""));const au=(f.author||"").split(/\s+and\s+/i).filter(Boolean);const a=au.length>3?au[0]+" et al.":au.join(", ");
+    const venue=f.journal||f.booktitle||f.publisher||f.howpublished||f.school||f.institution||"";const url=f.url||(f.doi?"https://doi.org/"+f.doi:"");
+    return [a?a+(f.year?` (${f.year})`:""):f.year?`(${f.year})`:"",f.title,venue].filter(Boolean).map(dot).join(". ")+"."+(url?" "+url:"")}
+  const url=(s.match(/https?:\/\/\S+/)||[])[0]||"";const t=dot((c.title||s.replace(url,"")).replace(/\s*[—–|-]\s*$/,"").trim());
+  return [t?t+".":"",url,c.acc&&url?`(accessed ${c.acc.replace(/\./g,"/")})`:""].filter(Boolean).join(" ")}
+R.aguide=(p)=>{const ed=isEdit();const cell=x=>h("div",{class:"td","data-d":"td"},x);const notes=[];
+  const rows=p.rows.map(({r,no,c0},i)=>{const b="appx.guide."+r.id,cs=r.cites||[];const im="briefImg" in r;
+    cs.forEach((c,j)=>notes.push(T("cap",[`[${c0+j}] `,fmtCite(c),ICTL(["cite-edit","Edit",r.id+":"+c.id],["cite-rm","Remove",r.id+":"+c.id])],{"data-note-row":p.r0+i})));
+    return h("div",{class:"tr","data-d":"tr"},
+      cell([T("small",[ed?h("input",{type:"checkbox",class:"gchk","data-act":"rule-g","data-id":r.id,checked:r.g,title:"Global guideline: listed first, index in red","aria-label":"Global guideline"}):null,h("span",{class:r.g?"red":null},no)])]),
+      cell([F(b+".name","[e.g. The open ground in the top-left corner]",{s:"small"}),ICTL(["rule-up","↑",r.id],["rule-down","↓",r.id],["rule-rm","Remove",r.id])]),
+      cell([F(b+".brief","[e.g. Heavy objects, vehicles or houses on the top-left surface would break the space's credibility]",{rich:true,s:"small"}),im?cimg(I(b+".briefImg","Brief Image","16/9","contain")):null,ICTL(["rule-img",im?"− Image":"+ Image",r.id])]),
+      cell([F(b+".detail","[e.g. The site ceiling is only 10 m (1000 UU) and 300 UU at its thinnest, shallow unreinforced rock. It fits villains who cut costs and ignore lives, but ground this thin cannot carry most buildings a quarry needs.]",{rich:true,s:"small"}),
+        cs.length?T("small",h("span",{class:"cites"},cs.map((_,j)=>`[${c0+j}]`).join(""))):null,ICTL(["cite-add","+ Cite",r.id])]))});
+  const half=Math.ceil(notes.length/2);
+  return [p.first?LR(T("h1",SEC.aguide),ed?h("div",{class:"addbar"},h("button",{"data-act":"rule-copy"},"Copy global guidelines"),h("button",{"data-act":"rule-csv"},"Import CSV from clipboard")):h("div")):null,
+    (p.first&&ed)?T("cap","Tick Global to list a guideline first with a red index. CSV / TSV columns: Global (G / Global / yes), Name, Brief, Detail, Cite (one per line); three columns read as Name, Brief, Detail."):null,
+    h("div",{class:"tbl","data-d":"tbl",style:"grid-template-columns:8% 18% 30% 44%"},h("div",{class:"tr","data-d":"tr"},[ed?"Global":"Index","Name","Brief","Detail"].map(thD)),
+      rows.length?rows:h("div",{class:"tr","data-d":"tr"},["[01]","[Name]","[Brief]","[Detail]"].map(phCell))),
+    notes.length?h("div",{class:"notes col","data-d":"col"},HR(),T("cap",L1("References")),ROW("1fr 1fr",COL(...notes.slice(0,half)),COL(...notes.slice(half)))):null,
+    (ed&&p.last)?h("div",{class:"addbar"},h("button",{"data-act":"rule-add"},"+ Add guideline")):null]};
+function citeDialog(rid,cid){const r=doc.appx.guide.find(x=>x.id===rid);if(!r)return;r.cites=r.cites||[];const c=r.cites.find(x=>x.id===cid);
+  const raw=h("textarea",{placeholder:"https://example.com/article\nor a BibTeX entry: @book{key, author={...}, title={...}, year={2020}}",style:"min-height:110px"});raw.value=c?c.raw:"";
+  const tt=h("input",{value:c&&c.title||"",placeholder:"Page title (web pages, optional)"});const prev=h("p",{class:"hint"});
+  const upd=()=>{prev.textContent=raw.value.trim()?"Listed as: "+fmtCite({raw:raw.value,title:tt.value,acc:c&&c.acc||today()}):"Paste a web address or a BibTeX entry."};raw.oninput=upd;tt.oninput=upd;upd();
+  modal(c?"Edit cite":"Add cite",[h("div",{class:"form"},h("label",null,"Web page or BibTeX",raw)),h("div",{class:"form"},h("label",null,"Title",tt)),prev],
+    [...(c?[{label:"Remove cite",run:()=>{r.cites=r.cites.filter(x=>x!==c);touched();render()}}]:[]),{label:"Cancel"},
+     {label:c?"Update":"Insert",pri:true,run:()=>{const v=raw.value.trim();if(!v){toast("Paste a web address or a BibTeX entry first");return false}
+       const o={raw:v,title:tt.value.trim(),acc:c&&c.acc||today()};if(c)Object.assign(c,o);else r.cites.push({id:uid(),...o});touched();render()}}]);
+}
+function parseCSV(s){const d=/\t/.test(s.split(/\r?\n/)[0])?"\t":",";const rows=[];let row=[],f="",q=false;
+  for(let i=0;i<s.length;i++){const ch=s[i];
+    if(q){if(ch==='"'){if(s[i+1]==='"'){f+='"';i++}else q=false}else f+=ch;continue}
+    if(ch==='"'&&!f.trim())q=true;else if(ch===d){row.push(f);f=""}else if(ch==="\n"||ch==="\r"){if(ch==="\r"&&s[i+1]==="\n")i++;row.push(f);rows.push(row);row=[];f=""}else f+=ch}
+  if(f||row.length){row.push(f);rows.push(row)}return rows.map(r=>r.map(x=>x.trim())).filter(r=>r.some(Boolean))}
+const GFLAG=/^(g\d*|global|true|yes|y|x|\*|✓|√)$/i;
+function rulesFromCSV(text){let rows=parseCSV(text);if(rows.length&&rows[0].some(x=>/^(index|global|name|brief|detail|cite)$/i.test(x)))rows=rows.slice(1);
+  const wide=rows.some(r=>r.length>=4);const html=s=>esc(s||"").replace(/\n/g,"<br>");
+  return rows.map(r=>{const [g,name,brief,detail,cite]=wide?r:["",...r];
+    return {...newRule(),g:GFLAG.test(g||""),name:name||"",brief:html(brief),detail:html(detail),cites:(cite||"").split(/\n+/).map(x=>x.trim()).filter(Boolean).map(x=>({id:uid(),raw:x,title:"",acc:today()}))}}).filter(r=>!E.rule(r))}
+async function importRules(){let t="";try{t=await navigator.clipboard.readText()}catch(_){}
+  const run=s=>{const rs=rulesFromCSV(s);if(!rs.length){toast("No guidelines found in that text");return false}
+    doc.appx.guide=sortRules([...doc.appx.guide.filter(r=>!E.rule(r)),...rs]);touched();render();toast(`Imported ${rs.length} guideline${rs.length>1?"s":""}`)};
+  if(t.trim()&&rulesFromCSV(t).length){run(t);return}
+  const ta=h("textarea",{placeholder:"Global,Name,Brief,Detail,Cite",style:"min-height:180px"});ta.value=t;
+  modal("Import guidelines (CSV / TSV)",[h("p",{class:"hint"},"The clipboard could not be read or held no rows, so paste them here. Columns: Global (G / Global / yes marks a global guideline), Name, Brief, Detail and an optional Cite column (one per line). With three columns they are Name, Brief, Detail. A header row is skipped."),ta],
+    [{label:"Cancel"},{label:"Import",pri:true,run:()=>run(ta.value)}],true)}
+async function copyGlobalRules(){const g=sortRules(doc.appx.guide).filter(r=>r.g&&!E.rule(r));if(!g.length){toast("No global guidelines to copy");return}
+  const q=v=>/[",\n]/.test(v)?`"${v.replace(/"/g,'""')}"`:v;
+  const t=[["Global","Name","Brief","Detail","Cite"],...g.map(r=>["Global",r.name||"",plain(r.brief),plain(r.detail),(r.cites||[]).map(fmtCite).join("\n")])].map(r=>r.map(q).join(",")).join("\n");
+  toast(await copyText(t)?`Copied ${g.length} global guideline${g.length>1?"s":""} as CSV`:"Could not copy to the clipboard")}
 const poDate=s=>s?s.replace(/\./g,"/"):"N/A";
 /* PO camera: level file, location XYZ and rotation XYZ (Unreal details panel: X=Roll, Y=Pitch, Z=Yaw); clicking a value copies it in Unreal's paste format */
 const f6=v=>(parseFloat(v)||0).toFixed(6),fN=v=>String(+(parseFloat(v)||0).toFixed(2));
@@ -718,7 +843,7 @@ function camDialog(id){const r=doc.po.find(x=>x.id===id);if(!r)return;
 async function copyText(t){try{await navigator.clipboard.writeText(t);return true}catch(_){const a=h("textarea",{style:"position:fixed;opacity:0"});a.value=t;document.body.append(a);a.select();const ok=document.execCommand("copy");a.remove();return ok}}
 R.appB=(p)=>{const cols="12% 19% 19% 19% 14% 17%";const hd=[["Version",h("br"),"PO Time",h("br"),"Finish Time"],"PO Image","Before","After","Reason","Location"];
   const cell=(x)=>h("div",{class:"td","data-d":"td"},x);
-  return [p.first?LR(T("h1","Appendix B - PO List"),isEdit()?h("div",{class:"addbar"},h("button",{"data-act":"po-add"},"+ Add PO entry")):h("div")):null,
+  return [p.first?LR(T("h1",SEC.appB),isEdit()?h("div",{class:"addbar"},h("button",{"data-act":"po-add"},"+ Add PO entry")):h("div")):null,
     p.first?T("cap","Paint-over review entries. Newest first."):null,
     h("div",{class:"tbl","data-d":"tbl",style:`grid-template-columns:${cols}`},
       h("div",{class:"tr","data-d":"tr"},hd.map(x=>h("div",{class:"td th","data-d":"td"},T("small",x)))),
@@ -1058,16 +1183,19 @@ function battleEditor(){
 /* ---------------- render all ---------------- */
 let CURL=null;
 function renderInto(container,mode){
-  const pm=MODE,ph=HIDE;MODE=mode;HIDE=mode==="export"&&EXP.hide;BSC=battleSeries();CHAR_SOLO=new Set();TBL_BREAKS={appA:new Set(),appB:new Set()};
+  const pm=MODE,ph=HIDE;MODE=mode;HIDE=mode==="export"&&EXP.hide;BSC=battleSeries();CHAR_SOLO=new Set();TBL_BREAKS=newBreaks();
   // two character rows share a page while they fit; a second row that overflows moves to its own page and the rest reflow.
   // appendix tables start on one page and are broken where the measured rows run out of room.
-  for(;;){CURL=layout();const N=CURL.P.length;container.textContent="";
+  TOC_FIT={leg:false,plan:Infinity};let guard=0;for(;;){CURL=layout();const N=CURL.P.length;container.textContent="";
     CURL.P.forEach((p,i)=>{const pg=h("section",{class:"page","data-sec":p.sec,"data-idx":i,id:container.id==="pages"?"pg"+(i+1):null});
       pg.append(...chromeHF(p,N,i));const body=h("div",{class:"body"});body.append(...R[p.t](p,CURL).filter(Boolean));pg.append(body);container.append(pg)});
     const pgs=$$(".page",container);const i=CURL.P.findIndex((p,k)=>p.t==="chars"&&p.rows.length>1&&overflows(pgs[k]));
     if(i>=0){CHAR_SOLO.add(CURL.P[i].r0+1);continue}
-    const j=CURL.P.findIndex((p,k)=>TBL_BREAKS[p.t]&&overflows(pgs[k]));const br=j<0?[]:tableBreaks(pgs[j],CURL.P[j]).filter(x=>!TBL_BREAKS[CURL.P[j].t].has(x));
+    const j=CURL.P.findIndex((p,k)=>TBL_BREAKS[p.t]&&overflows(pgs[k]));let br=j<0?[]:tableBreaks(pgs[j],CURL.P[j]).filter(x=>!TBL_BREAKS[CURL.P[j].t].has(x));
+    // estimate fell short (e.g. cites): the last row joins the next page, which is measured again if it now overflows
+    if(j>=0&&!br.length&&CURL.P[j].rows.length>1&&guard++<200){const p=CURL.P[j],S=TBL_BREAKS[p.t],e=p.r0+p.rows.length;br=[e-1];S.delete(e)}
     if(!br.length)break;br.forEach(x=>TBL_BREAKS[CURL.P[j].t].add(x))}
+  if(CURL.P[0]&&CURL.P[0].t==="cover")fitCover($(".page",container),CURL.toc);
   container.paging={chars:CHAR_SOLO,tbl:TBL_BREAKS};MODE=pm;HIDE=ph;
   $$(".slot[data-pending]",container).forEach(async s=>{const u=await ensurePreview(s.dataset.img);if(u){s.style.backgroundImage=`url("${u}")`;s.style.backgroundSize=s.dataset.fit;s.removeAttribute("data-pending")}});
   return CURL;
@@ -1081,7 +1209,7 @@ function checkOverflow(){$$("#pages .page").forEach(pg=>pg.classList.toggle("ove
 function outline(){const nav=$("#outline");nav.textContent="";CURL.toc.forEach(e=>{const a=h("a",{href:"#pg"+e.p,class:"l"+e.l},h("span",null,`${e.num} ${e.t||e.ph||""}`),h("span",null,String(e.p)));
   a.addEventListener("click",ev=>{ev.preventDefault();const el=$("#pg"+e.p);if(el)$("#view").scrollTo({top:el.offsetTop*(+$("#pages").dataset.z||1)-10,behavior:"smooth"});$("#side").classList.remove("open")});nav.append(a)})}
 function refreshDerived(){
-  if(!CURL||PREVIEW)return;const pm=MODE;MODE="edit";BSC=battleSeries();const pgn=$("#pages").paging;if(pgn){CHAR_SOLO=pgn.chars;TBL_BREAKS=pgn.tbl}const L=layout();CURL=L;const old=$("#tocBlock");if(old)old.replaceWith(tocBlock(L.toc));
+  if(!CURL||PREVIEW)return;const pm=MODE;MODE="edit";BSC=battleSeries();const pgn=$("#pages").paging;if(pgn){CHAR_SOLO=pgn.chars;TBL_BREAKS=pgn.tbl}const L=layout();CURL=L;const old=$("#tocBlock");if(old){TOC_FIT={leg:false,plan:Infinity};old.replaceWith(tocBlock(L.toc));fitCover($("#pg1"),L.toc)}
   const c=$("#beatChart");if(c)c.replaceWith(chartSVG());const bc=$("#battleChart");if(bc)bc.replaceWith(battleChartSVG());const tl=$("#tlChart");if(tl)tl.replaceWith(timelineSVG());const t=$("#walkTotal");if(t){t.textContent="";t.append(PH(walkTotals(),"[sss]-[sss]"))}MODE=pm;
   outline();status();checkOverflow();
 }
@@ -1136,6 +1264,12 @@ function flat(d){
   o["#events"]={idx:"8.2",label:"Events",v:B.events.map(e=>e.id).join(","),kind:"list"};
   B.events.forEach(e=>A("battle.events."+e.id,"8.2","Event e"+e.no,`${e.name||"(unnamed)"} · ${e.delta===""?"—":(+e.delta>0?"+":"")+e.delta}`));
   A("battle.decay","8.2","Natural decay",`-${B.decay.amount} / ${B.decay.per}s`);
+  // Appendix B and C are revised over time; Appendix A is locked after the initial version
+  const X=d.appx;o["#spec"]={idx:"B",label:"Project Specification",v:X.spec.map(r=>r.id).join(","),kind:"list"};
+  X.spec.forEach((r,i)=>{const n="B."+(i+1),p="appx.spec."+r.id,nm=`Spec ${i+1}`;[["item","Item"],["spec","Spec"],["info","Info"]].forEach(([k,l])=>{A(`${p}.${k}`,n,`${nm} › ${l}`,r[k],"r");A(`${p}.${k}Img`,n,`${nm} › ${l} image`,r[k+"Img"],"i")})});
+  const G=sortRules(X.guide);o["#rules"]={idx:"C",label:"Applied Guidelines",v:G.map(r=>r.id).join(","),kind:"list"};
+  G.forEach((r,i)=>{const n="C."+(i+1),p="appx.guide."+r.id,nm=`Guideline ${i+1}`;A(p+".g",n,nm+" › Global",r.g?"Global":"");A(p+".name",n,nm+" › Name",r.name);
+    A(p+".brief",n,nm+" › Brief",r.brief,"r");A(p+".briefImg",n,nm+" › Brief image",r.briefImg,"i");A(p+".detail",n,nm+" › Detail",r.detail,"r");A(p+".cites",n,nm+" › Cites",(r.cites||[]).map(fmtCite).join(" | "))});
   return o;
 }
 function diff(prev,cur){
@@ -1176,28 +1310,30 @@ pages.addEventListener("keydown",e=>{const f=e.target.closest(".f[data-path]");i
 pages.addEventListener("paste",e=>{
   const slot=e.target.closest&&e.target.closest(".slot[data-path]");
   const items=[...(e.clipboardData&&e.clipboardData.items||[])];const imgItem=items.find(i=>i.type.startsWith("image/"));
-  if(slot&&imgItem){e.preventDefault();setImage(slot.dataset.path,imgItem.getAsFile());return}
+  if(slot&&imgItem&&!slot.closest(".locked")){e.preventDefault();setImage(slot.dataset.path,imgItem.getAsFile());return}
   const f=e.target.closest&&e.target.closest(".f[data-path]");if(f){e.preventDefault();const t=e.clipboardData.getData("text/plain");document.execCommand("insertText",false,t)}});
 pages.addEventListener("focusin",e=>{const f=e.target.closest(".f.rich[data-path]");if(f&&f.dataset.tok&&!f.dataset.raw){f.dataset.raw="1";f.innerHTML=getP(doc,f.dataset.path)||""}if(f)showRtb(f);else hideRtb()});
 let pickPath=null;
 pages.addEventListener("click",e=>{
   const cv=e.target.closest(".camv[data-copy]");if(cv){e.preventDefault();copyText(cv.dataset.copy).then(ok=>toast(ok?"Copied "+cv.dataset.copy:"Could not copy to the clipboard"));return}
-  if(PREVIEW)return;
+  if(PREVIEW||e.target.closest(".locked"))return;
   const fc=e.target.closest("svg.fc[data-chart]");if(fc&&!e.target.closest("[data-act]")){chartEditor(fc.dataset.chart);return}
   const b=e.target.closest("[data-act]");
   if(b&&b.tagName==="BUTTON"){e.preventDefault();e.stopPropagation();act(b.dataset.act,b.dataset.id,b);return}
   if(e.target.closest("select"))return;
   const slot=e.target.closest(".slot[data-path]");if(slot){pickPath=slot.dataset.path;$("#pick").value="";$("#pick").click()}});
-pages.addEventListener("dblclick",e=>{const slot=e.target.closest(".slot[data-path][data-img]");if(slot&&!PREVIEW){e.preventDefault();editImage(slot.dataset.path,slot.dataset.ratio,slot.dataset.fit)}});
+pages.addEventListener("dblclick",e=>{const slot=e.target.closest(".slot[data-path][data-img]");if(slot&&!PREVIEW&&!slot.closest(".locked")){e.preventDefault();editImage(slot.dataset.path,slot.dataset.ratio,slot.dataset.fit)}});
 pages.addEventListener("keydown",e=>{const slot=e.target.closest&&e.target.closest(".slot[data-path]");if(slot&&e.target===slot&&(e.key==="Enter"||e.key===" ")){e.preventDefault();pickPath=slot.dataset.path;$("#pick").click()}});
-pages.addEventListener("change",e=>{const s=e.target.closest("select[data-act]");if(!s)return;
+pages.addEventListener("change",e=>{const s=e.target.closest("select[data-act],input[data-act]");if(!s)return;
+  if(s.dataset.act==="pre-n"){doc.appx.pre.n=+s.value;touched();render()}
+  if(s.dataset.act==="rule-g"){const r=doc.appx.guide.find(x=>x.id===s.dataset.id);if(r){r.g=s.checked;doc.appx.guide=sortRules(doc.appx.guide);touched();render()}}
   if(s.dataset.act==="flow-mode"){doc.flow.mode=s.value;autosave();render()}
   if(s.dataset.act==="bg-kind"){doc.ctx.bg[+s.dataset.i].kind=s.value;autosave();render()}
   if(s.dataset.act==="walk-cat"){const w=doc.walk.find(x=>x.id===s.dataset.id);if(w){w.cat=s.value;touched();render()}}
   if(s.dataset.act==="tl-mode"){doc.beats.tlMode=s.value;touched();render()}});
-pages.addEventListener("dragover",e=>{const s=e.target.closest(".slot[data-path]");if(s&&!PREVIEW){e.preventDefault();s.classList.add("drag")}});
+pages.addEventListener("dragover",e=>{const s=e.target.closest(".slot[data-path]");if(s&&!PREVIEW&&!s.closest(".locked")){e.preventDefault();s.classList.add("drag")}});
 pages.addEventListener("dragleave",e=>{const s=e.target.closest(".slot[data-path]");if(s)s.classList.remove("drag")});
-pages.addEventListener("drop",e=>{const s=e.target.closest(".slot[data-path]");if(!s||PREVIEW)return;e.preventDefault();s.classList.remove("drag");const f=[...e.dataTransfer.files].find(f=>f.type.startsWith("image/"));if(f)setImage(s.dataset.path,f)});
+pages.addEventListener("drop",e=>{const s=e.target.closest(".slot[data-path]");if(!s||PREVIEW||s.closest(".locked"))return;e.preventDefault();s.classList.remove("drag");const f=[...e.dataTransfer.files].find(f=>f.type.startsWith("image/"));if(f)setImage(s.dataset.path,f)});
 $("#pick").addEventListener("change",e=>{const f=e.target.files[0];if(f&&pickPath)setImage(pickPath,f)});
 async function setImage(path,file){try{const id=await ingest(file);setP(doc,path,id);touched(path);render();toast(`Image placed (${doc.images[id].w} × ${doc.images[id].h}px, original kept)`)}catch(err){console.error(err);toast("That file could not be read as an image")}}
 function act(a,id,el){
@@ -1221,6 +1357,20 @@ function act(a,id,el){
     case "po-add":doc.po.unshift({id:uid(),ver:verStr(doc.state)||"Draft "+today(),date:today(),po:"",before:"",after:"",reason:"",loc:""});break;
     case "po-rm":doc.po.splice(ix(doc.po),1);break;
     case "po-cam":camDialog(id);return;
+    case "spec-add":doc.appx.spec.push(newSpec());break;
+    case "spec-up":mv(doc.appx.spec,ix(doc.appx.spec),-1);break;
+    case "spec-down":mv(doc.appx.spec,ix(doc.appx.spec),1);break;
+    case "spec-rm":doc.appx.spec.splice(ix(doc.appx.spec),1);break;
+    case "spec-img":{const [rid,k]=id.split(":");const r=doc.appx.spec.find(x=>x.id===rid);if(r){if((k+"Img") in r)delete r[k+"Img"];else r[k+"Img"]=""}break}
+    case "rule-add":doc.appx.guide.push(newRule());break;
+    case "rule-up":case "rule-down":{const L=sortRules(doc.appx.guide),i=ix(L),j=i+(a==="rule-up"?-1:1);if(L[j]&&L[j].g===L[i].g)[L[i],L[j]]=[L[j],L[i]];doc.appx.guide=L;break}
+    case "rule-rm":doc.appx.guide.splice(ix(doc.appx.guide),1);break;
+    case "rule-img":{const r=doc.appx.guide[ix(doc.appx.guide)];if(r){if("briefImg" in r)delete r.briefImg;else r.briefImg=""}break}
+    case "rule-copy":copyGlobalRules();return;
+    case "rule-csv":importRules();return;
+    case "cite-add":citeDialog(id);return;
+    case "cite-edit":{const [rid,cid]=id.split(":");citeDialog(rid,cid);return}
+    case "cite-rm":{const [rid,cid]=id.split(":");const r=doc.appx.guide.find(x=>x.id===rid);if(r)r.cites=(r.cites||[]).filter(c=>c.id!==cid);break}
     case "guide-add":doc.flow.guide.push(newGuide());break;
     case "guide-up":mv(doc.flow.guide,ix(doc.flow.guide),-1);break;
     case "guide-down":mv(doc.flow.guide,ix(doc.flow.guide),1);break;
@@ -1308,7 +1458,10 @@ const HELP=[
   ["Document setup","Game, level, level index and the campaign hierarchy are set once and lock when the initial version is marked complete."],
   ["Hierarchy","Read top to down: the header lists the names, the cover joins the indices with dots and adds the level index (e.g. 10.5.1)."],
   ["Version number","Ver.Build.Major.Minor-date.total saves; each save picks Minor modify, Major revision or New full build."],
-  ["Save revision","Compares the document with the last saved version and logs every change, with its reason and note, to Appendix A."],
+  ["Save revision","Compares the document with the last saved version and logs every change, with its reason and note, to Appendix E (Minor Modify List)."],
+  ["Appendix A","Preceding Process Result: process name, 1 / 3 / 9 captioned images (filled ones move to the front) and three text blocks. Read-only after the initial version."],
+  ["Appendix B","Project Specification: Item / Spec / Info table; + Image adds a picture to a cell."],
+  ["Appendix C","Applied Guidelines: tick Global to list a guideline first with a red index. + Cite takes a web address or BibTeX; cites are listed under the table. Copy global guidelines copies them as CSV; Import CSV reads CSV or TSV from the clipboard."],
   ["Hide empty on export","On: empty fields, images and whole empty sections are left out. Off: every [placeholder] is exported, as a template."],
   ["Preview export","Shows the pages exactly as they will be exported, with header and footer; turn it off to edit."],
   ["Author hints","Grey labels such as Brief (Who / What…), Fail Conditions and column hints only show while editing."],
@@ -1356,7 +1509,7 @@ function setupDialog(){
 function initDialog(){
   const d=today();modal("Mark initial version complete",[h("p",null,"This locks the cover identity (game, campaign hierarchy, level, owner, contacts) and starts version tracking."),
     h("div",{class:"big"},`Ver.1.00.0000-${d}.0000,0001`),
-    h("p",{class:"hint"},"From now on every save compares the document with the last saved version and records each change in Appendix A with its reason and note.")],
+    h("p",{class:"hint"},"From now on every save compares the document with the last saved version and records each change in Appendix E with its reason and note. Appendix A (Preceding Process Result) becomes read-only.")],
     [{label:"Cancel"},{label:"Complete and save",pri:true,run:()=>{Object.assign(doc.state,{init:true,build:1,major:0,minor:0,total:1,date:d,lastEdit:d});
       doc.legends.upd=doc.legends.upd||d;doc.plans.forEach(p=>p.upd=p.upd||d);stampPO();doc.committed=flat(doc);purgeImages();IDB.set("doc",JSON.stringify(doc));render();toast("Initial version saved")}}]);
 }
@@ -1406,6 +1559,9 @@ async function migrate(d){
   n.walk.forEach(w=>{if(w.cat==null)w.cat=""});
   if(n.committed&&(d.schema||1)<3){const cur=flat(n);for(const k of Object.keys(n.committed))if(k.startsWith("flow."))delete n.committed[k];
     for(const [k,v] of Object.entries(cur))if(/^(flow\.|#charts|#guide|beats\.|battle\.|#units|#events)/.test(k)||k.endsWith(".cat"))n.committed[k]=v}
+  const x0=newDoc().appx,xd=d.appx||{};n.appx={pre:Object.assign(x0.pre,xd.pre||{}),spec:xd.spec||x0.spec,guide:xd.guide||x0.guide};
+  // projects saved before the appendices existed start tracking them from what they hold now
+  if(n.committed&&!n.committed["#spec"]){const cur=flat(n);for(const [k,v] of Object.entries(cur))if(/^(appx\.|#spec|#rules)/.test(k))n.committed[k]=v}
   n.schema=3;return n;
 }
 async function resetPics(){for(const f of Object.keys(BLOBS)){delete BLOBS[f];if(URLS[f]){URL.revokeObjectURL(URLS[f]);delete URLS[f]}}for(const k of Object.keys(PREV))delete PREV[k];for(const k of Object.keys(FULL))delete FULL[k];await IDB.clearPics()}
@@ -1556,8 +1712,8 @@ async function exportPptx(){
         else sl.addText(`[${el.dataset.label||"Image"}]`,{shape:pptx.ShapeType.rect,x:IN(r.x),y:IN(r.y),w:IN(r.w),h:IN(r.h),fill:{color:"F2F2F2"},line:{color:"C9C9C9",width:.5},fontFace:"JetBrains Mono",fontSize:6.5,color:"8C8C8C",align:"center",valign:"middle",margin:2});
         continue}
       const cs=getComputedStyle(el);const fs=parseFloat(cs.fontSize)*.75;const base=rgbHex(cs.color);const s=el.dataset.s;
-      if(s==="toc"){const t=$(".tt",el).textContent,p=$(".pg",el).textContent;const o={fontFace:"JetBrains Mono",fontSize:fs,color:base,bold:el.classList.contains("l1"),margin:0,valign:"top"};
-        sl.addText(t,{...o,x:IN(r.x),y:IN(r.y),w:IN(r.w-20),h:IN(r.h)});sl.addText(p,{...o,x:IN(r.x+r.w-30),y:IN(r.y),w:IN(30),h:IN(r.h),align:"right"});continue}
+      if(s==="toc"){const tt=$(".tt",el),pe=$(".pg",el),a=rel(tt,pg),b=rel(pe,pg);const o={fontFace:"JetBrains Mono",fontSize:fs,color:base,bold:el.classList.contains("l1"),margin:0,valign:"top"};
+        sl.addText(tt.textContent,{...o,x:IN(a.x),y:IN(a.y),w:IN(a.w+6),h:IN(a.h)});sl.addText(pe.textContent,{...o,x:IN(b.x-20),y:IN(b.y),w:IN(b.w+20),h:IN(b.h),align:"right"});continue}
       const ps=richParas(el);const arr=[];
       ps.forEach((p,k)=>{const pre=p.list?(p.list==="ul"?"• ":p.n+". "):"";if(!p.runs.length)arr.push({text:" ",options:{breakLine:k<ps.length-1}});
         p.runs.forEach((ru,j)=>arr.push({text:(j===0?pre:"")+ru.t,options:{bold:!!ru.b||s==="h3",italic:!!ru.i,underline:ru.u?{style:"sng"}:undefined,color:ru.c||base,breakLine:j===p.runs.length-1&&k<ps.length-1}}))});
