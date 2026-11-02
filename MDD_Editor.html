@@ -187,6 +187,7 @@ span.f{display:inline;min-height:0}
 .camv:hover{background:#DCE5F4}
 .cambox{display:grid;grid-template-columns:auto repeat(3,minmax(0,1fr));gap:6px 8px;align-items:center;font-size:11px;color:var(--muted)}
 .mdl textarea{background:var(--panel2);border:1px solid var(--line);border-radius:4px;padding:6px 7px;font:inherit;font-size:11px;min-height:54px;resize:vertical;color:var(--fg)}
+.coverratio{font-size:8pt;color:#5A6B86;text-align:center}
 .walkcat{font:inherit;font-size:8pt;margin-left:2mm;border:.5pt solid #9AA7BD;background:#F7F9FC;color:#2F3B52;border-radius:2px;vertical-align:middle}
 .chart.fc{background:#fff}
 .edit .chart.fc{cursor:pointer}
@@ -310,13 +311,14 @@ const newPre=()=>({name:"",n:3,imgs:Array.from({length:9},()=>({img:"",cap:""}))
    a full-line list (references to other documents) takes the whole half-page row, the room of two blocks */
 const newWorld=(kind="text")=>({id:uid(),title:"",kind,text:"",imgs:Array(6).fill(""),caps:Array(6).fill("")});
 const WK={text:"Text",pic:"Picture",list:"Full line list"};
+const CRATIO=["16:9","32:9","48:9"];  // shapes a lone cover picture can take
 const newSpec=()=>({id:uid(),item:"",spec:"",info:""});
 const newRule=()=>({id:uid(),g:false,name:"",brief:"",detail:"",cites:[]});
 function newDoc(){
   return {schema:3,
     meta:{game:"",path:[newNode("Campaign"),newNode("Chapter")],level:"",levelIndex:"",owner:"",contact:"",escalate:"",created:""},
     state:{init:false,build:0,major:0,minor:0,total:0,date:"",lastEdit:""},
-    cover:{imgs:["","",""],brief:"",fail:"",prereq:"",progress:""},
+    cover:{imgs:["","",""],ratio:"16:9",brief:"",fail:"",prereq:"",progress:""},
     ctx:{themes:"",themesImgs:Array(6).fill(""),themesCaps:Array(6).fill(""),worldLead:"",worlds:[newWorld("text"),newWorld("pic")],bg:[{kind:"campaign",text:""},{kind:"prev",text:""},{kind:"this",text:""}]},
     chars:[newChar(),newChar(),newChar()],
     walk:Array.from({length:20},newWalk),
@@ -639,6 +641,14 @@ R.cover=(p,L)=>{const m=doc.meta;const v=verLabel();
   const path=coverCampaign();  // e.g. 10.5.1 Level Name (indices top -> down, then level index)
   const side=(lbl,val,ph,right)=>{if(HIDE&&!val)return null;return T("meta",[L1(lbl),PH(val,ph)],right?{class:"r"}:{})};
   const ids=doc.cover.imgs.map((_,i)=>i);const shown=HIDE?ids.filter(i=>hasI(doc.cover.imgs[i])):(!isEdit()&&ids.some(i=>hasI(doc.cover.imgs[i]))?ids.filter(i=>hasI(doc.cover.imgs[i])):ids);
+  const ed=isEdit(),nf=ids.filter(i=>hasI(doc.cover.imgs[i])).length,cr=doc.cover.ratio||"16:9",rw=+cr.split(":")[0]/9;
+  /* three pictures fill the width at 48 mm high; one or two are centred, and a lone picture takes the chosen 16:9, 32:9 or 48:9 shape
+     (capped at the page width). The row is sized to its pictures so Word gets an evenly split table rather than a leading spacer. */
+  const coverRow=()=>{const n=shown.length,solo=n===1&&!ed;
+    const img=i=>{const one=nf===1&&hasI(doc.cover.imgs[i]);const s=I("cover.imgs."+i,`Level Mood / Bird's-eye View ${one?cr:"16:9"}`,one?cr.replace(":","/"):"16/9");
+      if(solo){s.style.width="100%";return s}s.style.height="48mm";s.style.width="auto";s.style.aspectRatio="16/9";return s};
+    const r=h("div",{class:"row","data-d":"row",style:`grid-template-columns:repeat(${n},1fr);margin-inline:auto;width:${n===3?"100%":solo?`min(100%,${(48*rw).toFixed(1)}mm)`:`calc(${n*84}mm + ${(n-1)*5}mm)`}`},
+      shown.map(i=>h("div",{class:"col","data-d":"col",style:solo?"":"height:48mm"},img(i))));return r};
   // each hint names what the box is for, then an example
   const ovEls=nn([["cover.brief","[Brief (Who / What / When / Where / How) e.g. The player, as a hunted hacker, must reach the safe house across the city before dawn]"],
     ["cover.fail","[Fail Conditions e.g. Player death, timer expiry, escort lost]"],
@@ -650,9 +660,10 @@ R.cover=(p,L)=>{const m=doc.meta;const v=verLabel();
     LR(side("Current Version: ",v,"Ver.[nn.nn.nnnn-yyyy.mm.dd.xxxx,xxxx]"),(HIDE&&!has(m.owner))?null:T("meta",["Owned by ",PH(m.owner,"[Owner]")],{class:"r"})),
     LR(side("Contact: ",m.contact,"[Email]"),side("Escalate to: ",m.escalate,"[Email]",true)),
     HR(),
-    shown.length?h("div",{class:"row","data-d":"row",style:`grid-template-columns:repeat(${shown.length},${shown.length===3?"1fr":"84mm"});justify-content:center`},
-      shown.map(i=>h("div",{class:"col","data-d":"col",style:"height:48mm"},(()=>{const s=I("cover.imgs."+i,"Level Mood / Bird's-eye View 16:9");s.style.height="48mm";s.style.width="auto";s.style.aspectRatio="16/9";return s})()))):null,
-    (()=>{const r=ROW("1fr 1fr",COL(T("h1","Contents"),tocBlock(L.toc)),ovEls.length?COL(T("h1","Overview"),...nn(ovEls)):COL());r.style.marginTop="auto";return r})()  // sits at the foot of the cover
+    ed&&nf<=1?h("div",{class:"ctl coverratio"},h("span",null,"Single picture ratio "),h("select",{class:"walkcat","data-act":"cover-ratio","aria-label":"Single picture ratio"},
+      CRATIO.map(x=>h("option",{value:x,selected:doc.cover.ratio===x},x)))):null,
+    shown.length?coverRow():null,
+    (()=>{const r=ROW("1fr 1fr",COL(T("h1","Contents"),tocBlock(L.toc)),ovEls.length?COL(T("h1","Overview"),...nn(ovEls)):COL());if(shown.length)r.style.marginTop="auto";return r})()  // sits at the foot of the cover, or right under the header with no pictures
   ];
 };
 /* six picture slots with legends. Exports that hide empty slots re-flow what is left: one picture grows to two thirds of the column,
@@ -1309,7 +1320,7 @@ function flat(d){
   const o={};const A=(k,idx,label,v,kind="t")=>{o[k]={idx,label,v:kind==="i"?imgVal(v,d.images):(v||""),kind}};
   A("cover.brief","1","Overview › Brief",d.cover.brief,"r");A("cover.fail","1","Overview › Fail Conditions",d.cover.fail,"r");
   A("cover.prereq","1","Overview › Prerequisite Levels",d.cover.prereq,"r");A("cover.progress","1","Overview › Progression Dependencies",d.cover.progress,"r");
-  d.cover.imgs.forEach((v,i)=>A("cover.imgs."+i,"1",`Cover › Image ${i+1}`,v,"i"));
+  d.cover.imgs.forEach((v,i)=>A("cover.imgs."+i,"1",`Cover › Image ${i+1}`,v,"i"));A("cover.ratio","1","Cover › Single picture ratio",d.cover.ratio);
   A("ctx.themes","2.1","Themes › Text",d.ctx.themes,"r");d.ctx.themesImgs.forEach((v,i)=>A("ctx.themesImgs."+i,"2.1",`Themes › Image ${i+1}`,v,"i"));
   d.ctx.themesCaps.forEach((v,i)=>A("ctx.themesCaps."+i,"2.1",`Themes › Legend ${i+1}`,v));
   A("ctx.worldLead","2.1","World Setting › Lead",d.ctx.worldLead);o["#worlds"]={idx:"2.1",label:"World Setting",v:d.ctx.worlds.map(w=>w.id).join(","),kind:"list"};
@@ -1408,6 +1419,7 @@ pages.addEventListener("change",e=>{const s=e.target.closest("select[data-act],i
   if(s.dataset.act==="flow-mode"){doc.flow.mode=s.value;autosave();render()}
   if(s.dataset.act==="bg-kind"){doc.ctx.bg[+s.dataset.i].kind=s.value;autosave();render()}
   if(s.dataset.act==="walk-cat"){const w=doc.walk.find(x=>x.id===s.dataset.id);if(w){w.cat=s.value;touched();render()}}
+  if(s.dataset.act==="cover-ratio"){doc.cover.ratio=s.value;touched();render()}
   if(s.dataset.act==="world-kind"){const w=doc.ctx.worlds.find(x=>x.id===s.dataset.id);if(w){w.kind=s.value;touched();render()}}
   if(s.dataset.act==="tl-mode"){doc.beats.tlMode=s.value;touched();render()}});
 pages.addEventListener("dragover",e=>{const s=e.target.closest(".slot[data-path]");if(s&&!PREVIEW&&!s.closest(".locked")){e.preventDefault();s.classList.add("drag")}});
@@ -1661,6 +1673,8 @@ async function migrate(d){
   n.ctx.worlds.forEach(w=>{w.caps=w.caps||Array(6).fill("")});
   if(wmig&&C){const cur=flat(n);for(const [k,v] of Object.entries(cur))if(/^ctx\.worlds\.[^.]+\.kind$/.test(k)||k==="#worlds")C[k]=v;
     for(const [k,v] of Object.entries(C))if(k.startsWith("ctx.worlds.")&&cur[k])v.label=cur[k].label}
+  // projects saved before the lone-picture ratio existed default to 16:9 without showing a change
+  if(!n.cover.ratio){n.cover.ratio="16:9";if(C&&!C["cover.ratio"])C["cover.ratio"]=flat(n)["cover.ratio"]}
   n.schema=3;return n;
 }
 async function resetPics(){for(const f of Object.keys(BLOBS)){delete BLOBS[f];if(URLS[f]){URL.revokeObjectURL(URLS[f]);delete URLS[f]}}for(const k of Object.keys(PREV))delete PREV[k];for(const k of Object.keys(FULL))delete FULL[k];await IDB.clearPics()}
