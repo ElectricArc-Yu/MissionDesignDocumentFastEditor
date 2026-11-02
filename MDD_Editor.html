@@ -103,6 +103,7 @@ span.f{display:inline;min-height:0}
 .exporting .ctl,.exporting .ictl,.exporting .addbar,.exporting select.ctl{display:none!important}
 .pdfcap .slot[data-img]{background-image:none!important;border-color:transparent!important}
 .pdfcap .slot[data-src]{background-image:none!important}
+.pdfcap svg[data-x=g]{visibility:hidden}
 .toc{display:grid;grid-template-columns:1fr 1fr;column-gap:5mm}
 .toc .tl{display:flex;gap:1mm;align-items:flex-end}
 .toc .tl .tt{display:flex;min-width:0}
@@ -728,12 +729,12 @@ R.appA=(p)=>{const cols="13% 7% 14% 23% 23% 20%";const hd=["Version","Section","
         h("div",{class:"td","data-d":"td"},valCell(r.after)),h("div",{class:"td","data-d":"td"},T("small",r.note||"—"))))
       :h("div",{class:"tr","data-d":"tr"},["[Ver.]","[x.x]","[Issue # / Feedback]","[Before]","[After]","[Change Notes]"].map(x=>h("div",{class:"td","data-d":"td"},T("small",h("span",{class:"ph"},x))))))];
 };
-/* Appendix A: result of the preceding process. 1 image sits centred between text, 3 sit in a row above three text columns, 9 form a 3x3 grid over a short text band, none leaves three text columns.
+/* Appendix A: the main output of the stage before this document (level art, 2D layout sketch, mood design, 3D sketch, decoration, white-boxing...). 1 image sits centred between text, 3 sit in a row above three text columns, 9 form a 3x3 grid over a short text band, none leaves three text columns.
    Filled images move to the front. The whole page is read-only once the initial version is marked complete. */
-const PRE_TX=["[Result summary]","[Findings and constraints]","[Hand-off notes]"];
+const PRE_TX=["[What the stage produced]","[Key decisions it fixed: palette, scale, landmarks, routes]","[What this document builds on, and what is still open]"];
 R.apre=()=>{const P=doc.appx.pre,lock=isEdit()&&doc.state.init,pm=MODE;if(lock)MODE="export";
   try{const ks=P.imgs.map((_,k)=>k);let show=[...ks.filter(k=>hasI(P.imgs[k].img)),...ks.filter(k=>!hasI(P.imgs[k].img))].slice(0,P.n);if(HIDE)show=show.filter(k=>hasI(P.imgs[k].img));
-    const fig=(k,hgt)=>{const s=I(`appx.pre.imgs.${k}.img`,"Result Image 16:9");if(hgt){s.style.height=hgt;s.style.width="auto"}
+    const fig=(k,hgt)=>{const s=I(`appx.pre.imgs.${k}.img`,"Stage Output 16:9");if(hgt){s.style.height=hgt;s.style.width="auto"}
       const c=F(`appx.pre.imgs.${k}.cap`,"[Caption]",{s:"cap"});if(c)c.style.textAlign="center";return COL(s,c)};
     const tx=[0,1,2].map(k=>F(`appx.pre.text.${k}`,PRE_TX[k],{rich:true}));const txRow=()=>tx.some(Boolean)?ROW("1fr 1fr 1fr",...tx.map(x=>COL(x))):null;
     const m=show.length,n=m?P.n:0;let body;
@@ -741,7 +742,7 @@ R.apre=()=>{const P=doc.appx.pre,lock=isEdit()&&doc.state.init,pm=MODE;if(lock)M
     else if(n===3){const g=GRID(m,show.map(k=>fig(k)));g.style.gridTemplateColumns=`repeat(${m},minmax(0,87mm))`;g.style.justifyContent="center";body=[g,txRow()]}
     else if(n===9){const g=GRID(Math.min(3,m),show.map(k=>fig(k,"37mm")));g.style.gridTemplateColumns=`repeat(${Math.min(3,m)},auto)`;g.style.justifyContent="center";body=[g,txRow()]}
     else body=[txRow()];
-    const nm=F("appx.pre.name","[Process Name]",{inline:true});
+    const nm=F("appx.pre.name","[Process Name, e.g. Mood Design / 2D Layout Sketch / 3D Sketch / White-boxing]",{inline:true});
     const sel=isEdit()?h("select",{class:"ctl walkcat","data-act":"pre-n","aria-label":"Number of images"},[[1,"1 image"],[3,"3 images"],[9,"9 images"],[0,"No images"]].map(([v,t])=>h("option",{value:v,selected:P.n===v},t))):null;
     const out=[T("h1",SEC.apre),(nm||sel)?h("div",{"data-x":"t","data-s":"h2"},nm,sel):null,
       lock?T("cap","Locked: the preceding process result cannot change after the initial version."):null,...body];
@@ -1466,7 +1467,7 @@ const HELP=[
   ["Hierarchy","Read top to down: the header lists the names, the cover joins the indices with dots and adds the level index (e.g. 10.5.1)."],
   ["Version number","Ver.Build.Major.Minor-date.total saves; each save picks Minor modify, Major revision or New full build."],
   ["Save revision","Compares the document with the last saved version and logs every change, with its reason and note, to Appendix E (Minor Modify List)."],
-  ["Appendix A","Preceding Process Result: process name, 1 / 3 / 9 captioned images (filled ones move to the front) and three text blocks. Read-only after the initial version."],
+  ["Appendix A","Preceding Process Result: the main output of the previous stage (level art, 2D layout sketch, mood design, 3D sketch, decoration, white-boxing): process name, 1 / 3 / 9 captioned images (filled ones move to the front) and three text blocks. Read-only after the initial version."],
   ["Appendix B","Project Specification: Item / Spec / Info table; + Image adds a picture to a cell."],
   ["Appendix C","Applied Guidelines: tick Global to list a guideline first with a red index. + Cite takes a web address or BibTeX; cites are listed under the table. Copy global guidelines copies them as CSV; Import CSV reads CSV or TSV from the clipboard."],
   ["Hide empty on export","On: empty fields, images and whole empty sections are left out. Off: every [placeholder] is exported, as a template."],
@@ -1598,13 +1599,15 @@ function busy(t){const o=$("#ovl");o.textContent="";o.append(h("div",{class:"mdl
 const busyT=t=>{const e=$("#busyT");if(e)e.textContent=t};const unbusy=()=>{$("#ovl").classList.remove("on");$("#ovl").textContent="";$("#stage").textContent=""};
 const rel=(el,base)=>{const a=el.getBoundingClientRect(),b=base.getBoundingClientRect();return {x:a.left-b.left,y:a.top-b.top,w:a.width,h:a.height}};
 function rgbHex(c){const m=c.match(/\d+(\.\d+)?/g);if(!m)return "000000";return m.slice(0,3).map(x=>pad((+x|0).toString(16),2)).join("").toUpperCase()}
+/** charts are drawn at least 4800px on the long side (up to 8x their page size) so they stay sharp when zoomed */
+const svgK=(w,h2)=>Math.max(3,Math.min(8,4800/Math.max(w,h2,1)));
 async function svgToBlob(svg,w,h2){const cl=svg.cloneNode(true);cl.setAttribute("width",w);cl.setAttribute("height",h2);const s=new XMLSerializer().serializeToString(cl);const im=await loadImg("data:image/svg+xml;charset=utf-8,"+encodeURIComponent(s));
-  const cv=canvas(w*3,h2*3);const g=cv.getContext("2d");g.fillStyle="#fff";g.fillRect(0,0,cv.width,cv.height);g.drawImage(im,0,0,cv.width,cv.height);return toBlob(cv,"image/png")}
+  const k=svgK(w,h2);const cv=canvas(w*k,h2*k);const g=cv.getContext("2d");g.fillStyle="#fff";g.fillRect(0,0,cv.width,cv.height);g.drawImage(im,0,0,cv.width,cv.height);return toBlob(cv,"image/png")}
 const topX=(pg)=>$$("[data-x]",pg).filter(el=>!el.parentElement.closest("[data-x]")&&el.getClientRects().length);
 /** image to place for a slot / chart: {blob,type,w,h,place:{x,y,w,h}} in CSS px relative to the element, or null for an empty slot */
 async function imgFor(el){
   const r=el.getBoundingClientRect();const W=r.width,H=r.height;
-  if(el.dataset.x==="g"){const b=await svgToBlob(el,W,H);return {blob:b,type:"image/png",w:W*3,h:H*3,place:{x:0,y:0,w:W,h:H}}}
+  if(el.dataset.x==="g"){const b=await svgToBlob(el,W,H),k=svgK(W,H);return {blob:b,type:"image/png",w:W*k,h:H*k,place:{x:0,y:0,w:W,h:H}}}
   if(el.dataset.src){const im=await loadImg(el.dataset.src);const cv=canvas(im.naturalWidth,im.naturalHeight);const g=cv.getContext("2d");g.fillStyle="#fff";g.fillRect(0,0,cv.width,cv.height);g.drawImage(im,0,0);
     const b=await toBlob(cv,"image/jpeg",.9);const s=Math.min(W/cv.width,H/cv.height);return {blob:b,type:"image/jpeg",w:cv.width,h:cv.height,place:{x:(W-cv.width*s)/2,y:(H-cv.height*s)/2,w:cv.width*s,h:cv.height*s}}}
   const id=el.dataset.img;if(!id||!doc.images[id])return null;let f=await getFull(id);
@@ -1740,9 +1743,9 @@ async function exportPdf(){
   pdf.setProperties({title:`${doc.meta.game||"[Game Name]"} - ${doc.meta.level||"[Level Name]"} MDD`,author:doc.meta.owner||""});
   const MM=25.4/96;const links=[];
   for(const [i,pg] of pagesEls.entries()){busyT(`PDF: page ${i+1} of ${pagesEls.length}`);
-    const pics=$$(".slot[data-img],.slot[data-src]",pg);const placed=[];for(const el of pics){const im=await imgFor(el);if(im)placed.push({r:rel(el,pg),im,id:el.dataset.img})}
+    const pics=$$(".slot[data-img],.slot[data-src],svg[data-x=g]",pg);const placed=[];for(const el of pics){const im=await imgFor(el);if(im)placed.push({r:rel(el,pg),im,id:el.dataset.img})}
     if(i===0)$$(".tl[data-p]",pg).forEach(el=>{const r=rel(el,pg);links.push({r,p:+el.dataset.p})});
-    st.classList.add("pdfcap");const cv=await html2canvas(pg,{scale:2,backgroundColor:"#ffffff",useCORS:true,logging:false});st.classList.remove("pdfcap");
+    st.classList.add("pdfcap");const cv=await html2canvas(pg,{scale:4,backgroundColor:"#ffffff",useCORS:true,logging:false});st.classList.remove("pdfcap");
     if(i>0)pdf.addPage("a4","landscape");pdf.addImage(cv.toDataURL("image/jpeg",.92),"JPEG",0,0,297,210);
     for(const {r,im,id} of placed){const fmt=im.type==="image/png"?"PNG":"JPEG";pdf.addImage(new Uint8Array(await im.blob.arrayBuffer()),fmt,(r.x+im.place.x)*MM,(r.y+im.place.y)*MM,im.place.w*MM,im.place.h*MM,undefined,fmt==="PNG"?"FAST":"NONE")}
   }
