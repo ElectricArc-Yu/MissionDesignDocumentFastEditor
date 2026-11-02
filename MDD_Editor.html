@@ -169,7 +169,7 @@ span.f{display:inline;min-height:0}
 .bgsel{font:inherit;font-size:9pt;font-weight:700;color:inherit;border:.5pt solid #9AA7BD;background:#F7F9FC;border-radius:2px;padding:0 .5mm;max-width:100%}
 .btn[aria-pressed=true]{background:var(--accent-soft);border-color:var(--accent)}
 #pages.preview .slot{cursor:default}
-.tok{border-radius:.6mm;padding:0 .5mm}
+.tok{border-radius:.6mm;padding:0 .5mm;display:inline-block;max-width:100%;box-sizing:border-box}  /* one box: a tag split over two lines is painted over the text before it by the PDF capture */
 .tokb{background:#F8D7D2;color:#9C2A1F}
 .toke{background:#D9EAD3;color:#38761D}
 .tokr{background:#EDEDED;color:#595959}
@@ -991,7 +991,11 @@ const FT_ADD=["explore","decision","event","sync","cutscene","puzzle","checkpoin
 function newChart(name){return {id:uid(),name:name||"",mode:"auto",img:"",seq:2,nodes:[
   {id:"n1",type:"start",label:"Start",next:[{to:"n2",label:""}],chit:false,refs:["",""]},{id:"n2",type:"end",label:"End",next:[],chit:false,refs:["",""]}]}}
 function newGuide(){return {id:uid(),text:"",img:""}}
-function nodeSize(n){switch(n.type){case "start":case "end":return {w:124,h:50};case "explore":return {w:196,h:58};case "decision":return {w:200,h:104};
+/* label room per node type as drawn below: [characters per line for a width, lines]; a box widens (up to 420) until its label fits */
+const NFIT={start:[w=>Math.floor((w-18)/9),1],end:[w=>Math.floor((w-18)/9),1],explore:[w=>Math.floor((w-18)/8.4),2],decision:[w=>Math.floor(w*.5/8.4),3],
+  sync:[w=>Math.floor((w-36)/8.4),2],cutscene:[w=>Math.floor((w-40)/7.8),2],puzzle:[w=>Math.floor((w-18)/8.4)-3,2],wait:[w=>Math.floor((w-48)/7.2),1]};
+function nodeSize(n){const s=baseSize(n),f=NFIT[n.type],t=String(n.label||"").trim();if(f&&t)while(s.w<420&&wrapText(t,f[0](s.w),99).length>f[1])s.w+=10;return s}
+function baseSize(n){switch(n.type){case "start":case "end":return {w:124,h:50};case "explore":return {w:196,h:58};case "decision":return {w:200,h:104};
   case "event":return {w:100,h:100};case "sync":return {w:196,h:58};case "cutscene":return {w:216,h:80};case "puzzle":return {w:206,h:62};
   case "checkpoint":return {w:50,h:50,below:26};case "wait":return {w:196,h:64};default:return {w:190,h:60}}}
 function wrapText(s,max,lines){s=String(s||"").trim();if(!s)return [];const out=[];let cur="";for(const w of s.split(/\s+/)){let word=w;while(word.length>max){if(cur){out.push(cur);cur=""}out.push(word.slice(0,max));word=word.slice(max)}
@@ -1031,7 +1035,7 @@ function flowSVG(ch,opt={}){
   syncs.forEach(s=>{const c=s.next&&s.next[0]&&by[s.next[0].to];if(c&&lay[c.id]!=null)rowSync[Math.floor(lay[c.id]/C)]=true});
   const rowTop=[],rowBody=[];let yy=0;for(let r=0;r<rows;r++){rowTop[r]=yy;rowBody[r]=Math.max(...layers.slice(r*C,(r+1)*C).map(l=>l.length))*cellH;yy+=rowBody[r]+(rowSync[r]?laneH:0)+gutter}
   const P={};layers.forEach((Ly,l)=>{const r=Math.floor(l/C),p=l%C,ci=r%2===0?p:C-1-p;const x=ci*colW+colW/2;const mc=rowBody[r]/cellH;const off=(mc-Ly.length)/2;
-    Ly.forEach((n,i)=>{P[n.id]={x,y:rowTop[r]+(off+i+.5)*cellH-(sz[n.id].below||0)/2,r,l,ci}})});
+    Ly.forEach((n,i)=>{P[n.id]={x,y:rowTop[r]+(off+i+.5)*cellH,r,l,ci}})});  // shapes stay on the row line; a checkpoint's name hangs below
   const svg=SV("svg",{class:"chart fc","data-x":"g",xmlns:SVGNS,preserveAspectRatio:"xMidYMid meet","font-family":"JetBrains Mono, Consolas, monospace"});
   const defs=SV("defs");defs.append(Object.assign(SV("marker",{id:"fcArrow",viewBox:"0 0 10 10",refX:9,refY:5,markerWidth:7,markerHeight:7,orient:"auto-start-reverse"}),{}));
   defs.lastChild.append(SV("path",{d:"M0 0 L10 5 L0 10 Z",fill:"#404040"}));
@@ -1041,7 +1045,10 @@ function flowSVG(ch,opt={}){
   const dir=r=>r%2===0?1:-1;const gk={};let minX=0,maxX=C*colW,minY=-30,maxY=yy-gutter+20;
   const bottom=id=>P[id].y+sz[id].h/2+(sz[id].below||0),top=id=>P[id].y-sz[id].h/2;
   const route=(a,b)=>{const A=P[a],B=P[b],sa=sz[a],sb=sz[b];const isBack=back.has(a+">"+b);
-    if(!isBack&&A.r===B.r&&B.l===A.l+1){const d=dir(A.r);const x1=A.x+d*sa.w/2,x2=B.x-d*sb.w/2,mx=(x1+x2)/2;return [[x1,A.y],[mx,A.y],[mx,B.y],[x2,B.y]]}
+    if(!isBack&&A.r===B.r&&B.l===A.l+1){const d=dir(A.r);const x1=A.x+d*sa.w/2,x2=B.x-d*sb.w/2,mx=(x1+x2)/2;
+      // nodes that overlap vertically get one straight line
+      const lo=Math.max(A.y-sa.h/2,B.y-sb.h/2)+8,hi=Math.min(A.y+sa.h/2,B.y+sb.h/2)-8;if(lo<=hi){const y=Math.min(hi,Math.max(lo,(A.y+B.y)/2));return [[x1,y],[x2,y]]}
+      return [[x1,A.y],[mx,A.y],[mx,B.y],[x2,B.y]]}
     if(!isBack&&B.r===A.r+1&&B.l===A.l+1){const solo=layers[A.l].length===1&&B.ci===A.ci;
       if(solo){const y1=bottom(a),y2=top(b),my=(y1+y2)/2;return [[A.x,y1],[A.x,my],[B.x,my],[B.x,y2]]}
       const d=dir(A.r),gy=rowTop[B.r]-gutter/2,k=layers[A.l].indexOf(by[a]);const ex=A.x+d*(colW/2-8-k*7);return [[A.x+d*sa.w/2,A.y],[ex,A.y],[ex,gy],[B.x,gy],[B.x,top(b)]]}
