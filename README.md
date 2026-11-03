@@ -42,7 +42,7 @@ The `Mock_POI/` folder provides a complete sample mission (a fictional level "Ex
 | [`POI_5.10.1_Exposed_MDD.pptx`](Mock_POI/POI_5.10.1_Exposed_MDD.pptx) | Exported PPT presentation (excluding cover) |
 | [`POI_5.10.1_Exposed_MDD.pdf`](Mock_POI/POI_5.10.1_Exposed_MDD.pdf) | Exported PDF document |
 
-The sample uses every feature: optional actions, partly filled walkthrough images (mixed export layout), PO entries with Unreal cameras and a pending Finish Time, Appendices A–C with captions, cell images, global guidelines and cites, and a revision that logs Appendix B/C changes. The whole document is AI-generated, as its cover Contact says.
+The sample uses every feature: Themes pictures with legends, a World Setting lead line over Text, Picture (2 and 4 pictures, re-flowed on export) and Full line list blocks, character bios long enough to show the justified, hyphenated text and the dividers between blocks, optional actions, partly filled walkthrough images (mixed export layout), PO entries with Unreal cameras and a pending Finish Time, Appendices A–C with captions, cell images, global guidelines and cites, and a revision that logs Appendix B/C changes. The whole document is AI-generated, as its cover Contact says.
 
 Syntax notes from the example:
 
@@ -138,7 +138,7 @@ Pushing to `main` triggers GitHub Actions ([`.github/workflows/static.yml`](.git
 | [`POI_5.10.1_Exposed_MDD.pptx`](Mock_POI/POI_5.10.1_Exposed_MDD.pptx) | 导出的 PPT（不含封面页） |
 | [`POI_5.10.1_Exposed_MDD.pdf`](Mock_POI/POI_5.10.1_Exposed_MDD.pdf) | 导出的 PDF |
 
-示例用到了所有功能：可选动作、只放了部分图片的 Walkthrough 小节（导出时混排）、带 Unreal 摄像机和未完成 Finish Time 的 PO、带题注 / 单元格图片 / 全局规范 / 引用的 Appendix A–C，以及一次记录了 Appendix B、C 改动的修订。整份文档完全由 AI 生成，封面的 Contact 也注明了这一点。
+示例用到了所有功能：带图例的 Themes 图片、World Setting 的总起说明，以及 Text、Picture（2 张和 4 张，导出时自动重排）和 Full line list 三种块、足够长的角色介绍（可以看到两端对齐、自动断词加 - 和块之间的分割线）、可选动作、只放了部分图片的 Walkthrough 小节（导出时混排）、带 Unreal 摄像机和未完成 Finish Time 的 PO、带题注 / 单元格图片 / 全局规范 / 引用的 Appendix A–C，以及一次记录了 Appendix B、C 改动的修订。整份文档完全由 AI 生成，封面的 Contact 也注明了这一点。
 
 示例中的一些写法：
 
