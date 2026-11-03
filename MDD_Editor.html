@@ -303,7 +303,7 @@ const SEC={cover:"Overview",ctx:"Context",walk:"Mission Walkthrough",leg:"Layout
 const BGK={campaign:{t:"Campaign",ph:"[Campaign backstory and the overall conflict]"},prev:{t:"Previous Levels",ph:"[What happened in the previous levels]"},
   this:{t:"This Level",ph:"[What happens in this level (shown in red)]"},next:{t:"Following Levels",ph:"[What this level sets up for the following levels]"}};
 const EDIT0={q:0,fine:0,fh:false,fv:false,crop:null,b:100,c:100,s:100};
-function newWalk(){return {id:uid(),brief:"",cat:"",desc:"",int:"",dmin:"",dmax:"",acts:"",m:["","","",""],r:["",""],mc:["","","",""],rc:["",""]}}
+function newWalk(){return {id:uid(),brief:"",cat:"",desc:"",int:"",dmin:"",dmax:"",acts:"",rows:2,m:Array(10).fill(""),r:Array(5).fill(""),mc:Array(10).fill(""),rc:Array(5).fill("")}}
 function newChar(){return {id:uid(),name:"",img:"",role:"",text:""}}
 const newNode=(label)=>({id:uid(),label,index:"",name:""});
 const newPre=()=>({name:"",n:3,imgs:Array.from({length:9},()=>({img:"",cap:""})),text:["","",""]});
@@ -576,7 +576,8 @@ function layout(){
   let r0=0;cc.forEach((rows,i)=>{n=add({t:"chars",sec:SEC.ctx,rows,r0,first:i===0,h1:ctxFirst&&i===0,last:i===cc.length-1});r0+=rows.length;if(i===0){if(ctxFirst)toc.push({l:1,num:"2",t:"Context",p:n});toc.push({l:2,num:"2.2",t:"Characters",p:n})}});
   // Walkthrough (keeps original numbering when empties are hidden)
   const walk=doc.walk.map((w,i)=>({w,i})).filter(x=>!HIDE||!E.walk(x.w));
-  const wc=chunk(walk,2);
+  // two subsections share a page; one with four or five picture rows takes a page to itself so its pictures keep their size
+  const wc=[];for(const x of walk){const big=(x.w.rows??2)>3,l=wc[wc.length-1];if(!big&&l&&l.length===1&&(l[0].w.rows??2)<=3)l.push(x);else wc.push([x])}
   wc.forEach((c,i)=>{n=add({t:"walk",sec:SEC.walk,items:c,first:i===0,last:i===wc.length-1});if(i===0)toc.push({l:1,num:"3",t:"Mission Walkthrough",p:n});
     c.forEach(x=>toc.push({l:2,num:"3."+pad(x.i+1,2),t:x.w.brief,ph:"[Brief]",p:n}))});
   const legs=doc.legends.items.filter(it=>!HIDE||!E.leg(it));
@@ -709,28 +710,31 @@ R.chars=(p)=>{const row=items=>VROW(3,[0,1,2].map(j=>{const c=items[j];if(!c)ret
   return [p.h1?T("h1","Context"):null,p.first?T("h2","Characters"):null,p.rows.length>1?SPLIT(...p.rows.map(r=>[row(r)])):row(p.rows[0]),(isEdit()&&p.last)?h("div",{class:"addbar"},h("button",{"data-act":"char-add"},"+ Add character")):null];
 };
 /** export with empty image slots hidden: the images left share the right side, sized to keep the usual block height */
+const WMID=["Top-down / Overall Space","Key Highlight View","Free Pick A","Free Pick B","Free Pick C","Free Pick D","Free Pick E","Free Pick F","Free Pick G","Free Pick H"],
+  WROW=[[0,2],[1,3],[4,5],[6,7],[8,9]],WREF=["Main Reference","Mood Picture","Extra Reference A","Extra Reference B","Extra Reference C"];
 function walkMixed(text,imgs){const n=imgs.length;if(!n)return ROW("1fr",text);
   const [cols,blk]=n===1?["4fr 2fr",imgs[0]]:n===2?["3fr 3fr",GRID(2,imgs)]:n===3?["3fr 3fr",ROW("2fr 1fr",imgs[0],COL(imgs[1],imgs[2]))]:n===4?["4fr 2fr",GRID(2,imgs)]:["3fr 3fr",GRID(3,imgs)];
   return ROW(cols,text,blk)}
 function walkTotals(){let a=0,b=0,ok=false;for(const w of doc.walk){const x=parseFloat(w.dmin),y=parseFloat(w.dmax);if(!isNaN(x)){a+=x;ok=true}if(!isNaN(y)){b+=y;ok=true}else if(!isNaN(x))b+=x}return ok?`${Math.round(a)}-${Math.round(b)}s`:null}
 R.walk=(p)=>{const out=[];const halves=[];const tot=walkTotals();const cnt=HIDE?doc.walk.filter(w=>!E.walk(w)).length:doc.walk.length;
   if(p.first)out.push(LR(T("h1","Mission Walkthrough"),T("meta",[(tot||!HIDE)?L1("Total Duration: "):null,(tot||!HIDE)?h("span",{id:"walkTotal"},PH(tot,"[sss]-[sss]")):null,(tot||!HIDE)?" · ":null,cnt+" subsections"],{class:"r"})));
-  p.items.forEach(({w,i},j)=>{const b="walk."+w.id;const out=[];halves.push(out);
+  p.items.forEach(({w,i},j)=>{const b="walk."+w.id;const out=[];halves.push(out);const nr=w.rows??2;
     if(j>0)out.push(HR());
     const br=F(b+".brief","[Brief]",{inline:true});
     const cat=typeName(w.cat);const catEl=isEdit()?h("select",{class:"walkcat ctl","data-act":"walk-cat","data-id":w.id,"aria-label":"Beat type"},h("option",{value:""},"(type)"),doc.beats.types.map(t=>h("option",{value:t.id,selected:t.id===w.cat},t.name||"(unnamed)"))):(cat?h("span",null," ("+cat+")"):(HIDE?null:h("span",{class:"ph"}," ([Type])")));
-    out.push(h("div",{"data-x":"t","data-s":"h2"},pad(i+1,2),br?" - ":null,br,catEl,ICTL(["walk-up","↑",w.id],["walk-down","↓",w.id],["walk-ins","+ Insert after",w.id],["walk-rm","Remove",w.id])));
+    out.push(h("div",{"data-x":"t","data-s":"h2"},pad(i+1,2),br?" - ":null,br,catEl,ICTL(["walk-up","↑",w.id],["walk-down","↓",w.id],["walk-ins","+ Insert after",w.id],["walk-rm","Remove",w.id],nr<5?["walk-row-add","+ Image row",w.id]:null,nr>0?["walk-row-rm","− Image row",w.id]:null)));
     const it=F(b+".int","{+/-}[Amount]",{inline:true}),d1=F(b+".dmin","[sss]",{inline:true}),d2=F(b+".dmax","[sss]",{inline:true});
     /* legends are optional; once any picture of the subsection has one, every picture keeps a legend line (blank if it has none) so the pictures stay level */
     const capOn=!HIDE||w.mc.some(has)||w.rc.some(has);
     const fig=(g,k,lbl)=>{const im=I(`${b}.${g}.${k}`,lbl);if(!im)return null;if(!capOn)return im;
       const c=F(`${b}.${g}c.${k}`,"[Legend]",{s:"cap"})||T("cap"," ");c.style.textAlign="center";return COL(im,c)};
-    const mid=nn([fig("m",0,"Top-down / Overall Space"),fig("m",2,"Free Pick A"),fig("m",1,"Key Highlight View"),fig("m",3,"Free Pick B")]);
+    // up to five picture rows, each two middle pictures and one reference; 0 rows lets the text take the full width
+    const mid=nn(WROW.slice(0,nr).flatMap(([a,c])=>[fig("m",a,WMID[a]),fig("m",c,WMID[c])]));
     const text=COL(F(b+".desc","[Detailed description: what happens, what the player learns, how the space supports it]",{rich:true}),
         LR(it?T("body",[L1("Intensity: "),it]):null,(d1||d2)?T("body",[L1("Duration: "),d1,d1&&d2?"-":null,d2,HIDE?"s":null],{class:"r"}):null),
         F(b+".acts","[1. Main player action  2. Next action  (optional exploration in brackets)  3. ...  Battle !(b1,45)  Group !(b1,45)*3  Rest !(30)  Event !(e1,20)  Optional: start with ?]",{rich:true,tok:true,wid:w.id}));
-    const ref=nn([fig("r",0,"Main Reference"),fig("r",1,"Mood Picture")]);
-    out.push(HIDE&&(mid.length<4||ref.length<2)?walkMixed(text,[...mid,...ref]):ROW("3fr 2fr 1fr",text,mid.length?GRID(2,mid):COL(),COL(...ref)));
+    const ref=nn(WREF.slice(0,nr).map((l,k)=>fig("r",k,l)));
+    out.push(!nr?ROW("1fr",text):HIDE&&(mid.length<2*nr||ref.length<nr)?walkMixed(text,[...mid,...ref]):ROW(nr===3?"6fr 2fr 1fr":"3fr 2fr 1fr",text,mid.length?GRID(2,mid):COL(),COL(...ref)));  // three rows: pictures at 2/3 size keep the height of two; four or five have a page to themselves
   });
   out.push(SPLIT(...halves));
   if(isEdit()&&p.last)out.push(h("div",{class:"addbar"},h("button",{"data-act":"walk-add"},"+ Add subsection")));
@@ -1348,6 +1352,7 @@ function status(){const st=doc.state,m=doc.meta;const v=verStr(st);const pill=$(
 
 /* ---------------- diff / versioning ---------------- */
 const typeNameIn=(d,id)=>((d.beats.types||[]).find(t=>t.id===id)||{}).name||"";
+const WFL=["Top-down / Overall","Key Highlight","Free Pick A","Free Pick B","Free Pick C","Free Pick D","Free Pick E","Free Pick F","Free Pick G","Free Pick H"];
 function flat(d){
   const o={};const A=(k,idx,label,v,kind="t")=>{o[k]={idx,label,v:kind==="i"?imgVal(v,d.images):(v||""),kind}};
   A("cover.brief","1","Overview › Brief",d.cover.brief,"r");A("cover.fail","1","Overview › Fail Conditions",d.cover.fail,"r");
@@ -1365,8 +1370,9 @@ function flat(d){
   o["#walk"]={idx:"3",label:"Mission Walkthrough",v:d.walk.map(c=>c.id).join(","),kind:"list"};
   d.walk.forEach((w,i)=>{const n="3."+pad(i+1,2),p="walk."+w.id,nm=`${pad(i+1,2)} ${w.brief||"[Brief]"}`;
     A(p+".brief",n,nm+" › Brief",w.brief);A(p+".desc",n,nm+" › Description",w.desc,"r");A(p+".int",n,nm+" › Intensity",w.int);A(p+".dmin",n,nm+" › Duration min",w.dmin);A(p+".dmax",n,nm+" › Duration max",w.dmax);A(p+".acts",n,nm+" › Player actions",w.acts,"r");A(p+".cat",n,nm+" › Type",typeNameIn(d,w.cat));
-    ["Top-down / Overall","Key Highlight","Free Pick A","Free Pick B"].forEach((l,k)=>A(p+".m."+k,n,nm+" › "+l,w.m[k],"i"));["Main Reference","Mood Picture"].forEach((l,k)=>A(p+".r."+k,n,nm+" › "+l,w.r[k],"i"));
-    ["Top-down / Overall","Key Highlight","Free Pick A","Free Pick B"].forEach((l,k)=>A(p+".mc."+k,n,nm+" › "+l+" legend",w.mc[k]));["Main Reference","Mood Picture"].forEach((l,k)=>A(p+".rc."+k,n,nm+" › "+l+" legend",w.rc[k]))});
+    A(p+".rows",n,nm+" › Picture rows",String(w.rows??2));
+    WFL.forEach((l,k)=>A(p+".m."+k,n,nm+" › "+l,w.m[k],"i"));WREF.forEach((l,k)=>A(p+".r."+k,n,nm+" › "+l,w.r[k],"i"));
+    WFL.forEach((l,k)=>A(p+".mc."+k,n,nm+" › "+l+" legend",w.mc[k]));WREF.forEach((l,k)=>A(p+".rc."+k,n,nm+" › "+l+" legend",w.rc[k]))});
   o["#legends"]={idx:"4",label:"Layout Plan Legends",v:d.legends.items.map(c=>c.id).join(","),kind:"list"};
   d.legends.items.forEach((it,i)=>{const n="4."+(i+1);A("legends.items."+it.id+".name",n,"Legend › Name",it.name);A("legends.items."+it.id+".img",n,`Legend ${it.name||i+1} › Image`,it.img,"i")});
   o["#plans"]={idx:"5",label:"2D Layout Plan",v:d.plans.map(c=>c.id).join(","),kind:"list"};
@@ -1472,6 +1478,10 @@ function act(a,id,el){
     case "walk-ins":doc.walk.splice(ix(doc.walk)+1,0,newWalk());break;
     case "walk-add":doc.walk.push(newWalk());break;
     case "walk-rm":if(doc.walk.length>1)doc.walk.splice(ix(doc.walk),1);break;
+    case "walk-row-add":{const w=doc.walk[ix(doc.walk)];w.rows=Math.min(5,(w.rows??2)+1);touched("walk."+w.id+".rows");break}
+    case "walk-row-rm":{const w=doc.walk[ix(doc.walk)],k=(w.rows??2)-1;if(k<0)return;const [a,c]=WROW[k];  // the bottom row goes, with its pictures and legends
+      if((hasI(w.m[a])||hasI(w.m[c])||hasI(w.r[k])||has(w.mc[a])||has(w.mc[c])||has(w.rc[k]))&&!confirm("Remove this picture row and the pictures in it?"))return;
+      w.m[a]=w.m[c]=w.r[k]=w.mc[a]=w.mc[c]=w.rc[k]="";w.rows=k;touched("walk."+w.id+".rows");break}
     case "char-add":doc.chars.push(newChar());break;
     case "char-rm":doc.chars.splice(ix(doc.chars),1);break;
     case "leg-add":doc.legends.items.splice(ix(doc.legends.items)+1,0,{id:uid(),name:"",img:""});break;
@@ -1686,7 +1696,10 @@ async function migrate(d){
       n.committed[`ctx.bg.${i}.kind`]={idx:"2.1",label:`Background › Column ${i+1} content`,v:BGK[k].t,kind:"t"};n.committed[`ctx.bg.${i}.text`]={idx:"2.1",label:`Background › Column ${i+1} text`,v:old?old.v:"",kind:"r"}})}}
   if(!n.flow.charts){const old=d.flow||{};const c=newChart("Main Flow");if(old.img){c.mode="image";c.img=old.img}n.flow={mode:old.mode||"both",charts:[c],guide:(old.cols||[]).map(x=>({id:uid(),text:x.text||"",img:x.img||""}))}}
   n.beats=Object.assign(newDoc().beats,d.beats||{});n.battle=Object.assign(newDoc().battle,d.battle||{});
-  n.walk.forEach(w=>{if(w.cat==null)w.cat="";w.mc=w.mc||["","","",""];w.rc=w.rc||["",""]});
+  const pad6=(a,l)=>(a||[]).concat(Array(l).fill("")).slice(0,l),rowsNew=[];
+  n.walk.forEach(w=>{if(w.cat==null)w.cat="";w.m=pad6(w.m,10);w.r=pad6(w.r,5);w.mc=pad6(w.mc,10);w.rc=pad6(w.rc,5);
+    // subsections saved before picture rows could change keep their two rows without showing a change
+    if(w.rows==null){w.rows=2;rowsNew.push(`walk.${w.id}.rows`)}});
   if(n.committed&&(d.schema||1)<3){const cur=flat(n);for(const k of Object.keys(n.committed))if(k.startsWith("flow."))delete n.committed[k];
     for(const [k,v] of Object.entries(cur))if(/^(flow\.|#charts|#guide|beats\.|battle\.|#units|#events)/.test(k)||k.endsWith(".cat"))n.committed[k]=v}
   const x0=newDoc().appx,xd=d.appx||{};n.appx={pre:Object.assign(x0.pre,xd.pre||{}),spec:xd.spec||x0.spec,guide:xd.guide||x0.guide};
@@ -1709,6 +1722,7 @@ async function migrate(d){
     for(const [k,v] of Object.entries(C))if(k.startsWith("ctx.worlds.")&&cur[k])v.label=cur[k].label}
   // projects saved before the lone-picture ratio existed default to 16:9 without showing a change
   if(!n.cover.ratio){n.cover.ratio="16:9";if(C&&!C["cover.ratio"])C["cover.ratio"]=flat(n)["cover.ratio"]}
+  if(n.committed&&rowsNew.length){const cur=flat(n);for(const k of rowsNew)if(!n.committed[k])n.committed[k]=cur[k]}
   n.schema=3;return n;
 }
 async function resetPics(){for(const f of Object.keys(BLOBS)){delete BLOBS[f];if(URLS[f]){URL.revokeObjectURL(URLS[f]);delete URLS[f]}}for(const k of Object.keys(PREV))delete PREV[k];for(const k of Object.keys(FULL))delete FULL[k];await IDB.clearPics()}
