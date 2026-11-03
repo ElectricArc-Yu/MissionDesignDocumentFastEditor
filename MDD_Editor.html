@@ -596,7 +596,7 @@ function layout(){
   const B=doc.battle;let tf=true;const batH=()=>{if(tf)toc.push({l:1,num:"8",t:"Battle Intensity",p:n});const f=tf;tf=false;return f};
   if(!HIDE||B.units.length){const uc=chunk(B.units,14);if(!uc.length)uc.push([]);uc.forEach((rows,i)=>{n=add({t:"bat1",sec:SEC.bat,rows,first:i===0,h1:tf});batH()})}
   if(!HIDE||B.events.length){const ec=chunk(B.events,16);if(!ec.length)ec.push([]);ec.forEach((rows,i)=>{n=add({t:"bat2",sec:SEC.bat,rows,first:i===0,last:i===ec.length-1,h1:tf});batH()})}
-  if(!HIDE||BSC.has){const fr=[...B.units.map(u=>({k:"b",u})),...B.events.map(e=>({k:"e",u:e}))];const rc=chunk(fr,20);if(!rc.length)rc.push([]);
+  if(!HIDE||BSC.has){const fr=[...B.units.map(u=>({k:"b",u})),...B.events.map(e=>({k:"e",u:e})),{k:"rmax"},{k:"rmin"}];const rc=chunk(fr,20);if(!rc.length)rc.push([]);
     rc.forEach((rows,i)=>{n=add({t:"bat3",sec:SEC.bat,rows,first:i===0,h1:tf});batH()})}
   // Appendices A-E
   const X=doc.appx;
@@ -755,7 +755,7 @@ R.guide=(p)=>[flowH1(p),p.gfirst?T("h2","Exploration Guidance"):null,
   (isEdit()&&p.last)?h("div",{class:"addbar"},h("button",{"data-act":"guide-add"},"+ Add guidance item")):null];
 R.beats1=(p)=>[p.h1?T("h1","Beats"):null,T("h2","Beats Chart (Time Based)"),chartSVG()];
 R.beatsB=(p)=>[p.h1?T("h1","Beats"):null,T("h2","Beats Chart (Battle Based)"),
-  T("cap",`Shortest durations. A battle sets intensity to its combat unit estimate, events add their change, and every full ${doc.battle.decay.per}s without a battle or event drops it by ${doc.battle.decay.amount}.`),battleChartSVG()];
+  T("cap",`Shortest durations. Intensity is a running total: a battle adds its combat unit estimate, an event adds its change, and every full ${doc.battle.decay.per}s without a battle or event drops it by ${doc.battle.decay.amount}.`),battleChartSVG()];
 function tlModeCtl(){if(!isEdit())return null;return h("select",{class:"ctl","data-act":"tl-mode","aria-label":"Timeline source",style:"font:inherit;font-size:7.5pt;margin-left:4mm"},
   [["auto","Generate from Brief, type and time"],["image","Use an image"]].map(([v,t])=>h("option",{value:v,selected:doc.beats.tlMode===v},t)))}
 R.beats2=(p)=>[p.h1?T("h1","Beats"):null,h("div",{"data-x":"t","data-s":"h2"},"Beats Timeline",tlModeCtl()),
@@ -778,11 +778,14 @@ R.bat2=(p)=>{const B=doc.battle;return [batH1(p),p.first?T("h2","Events & Defaul
   p.last?T("body",[L1("Natural decay: "),`-${B.decay.amount} after every ${B.decay.per}s without a battle or event`]):null,
   (p.last&&!HIDE)?T("cap","Mission Walkthrough actions: !(b1,45) = 45 s battle with combat unit b1 · !(b1,45)*3 = three b1 units at once, intensity added · !(30) = 30 s rest · !(e1,20) = event e1 lasting 20 s · !(e1) = event e1 (older form, shows when it happens)."):null]};
 R.bat3=(p)=>{const walks=doc.walk.map((w,i)=>({w,i})).filter(x=>!HIDE||!E.walk(x.w));const n=walks.length;
-  return [batH1(p),p.first?T("h2","Battle & Event Frequency by Brief"):null,p.first?T("cap","Count of each combat unit (red) and event (green) per Mission Walkthrough subsection."):null,
+  return [batH1(p),p.first?T("h2","Battle & Event Frequency by Brief"):null,p.first?T("cap","Count of each combat unit (red) and event (green) per Mission Walkthrough subsection, optional actions included. Max / Min Rest: the longest and shortest !(ss) rest, or with none, the longest / shortest duration minus all battle and event time."):null,
     h("div",{class:"tbl","data-d":"tbl",style:`grid-template-columns:42mm repeat(${Math.max(1,n)},minmax(0,1fr))`},
-      h("div",{class:"tr","data-d":"tr"},thD("Type"),walks.map(x=>thD(pad(x.i+1,2)))),
-      p.rows.length?p.rows.map(r=>{const key=r.k+r.u.no;return h("div",{class:"tr","data-d":"tr"},cellD(T("small",`${r.k}${r.u.no} ${r.u.name||""}`.trim())),
-        walks.map(x=>{const c=(BSC.freq[x.w.id]||{})[key]||0;return cellD(T("small",c?String(c):""),c?(r.k==="b"?"F8D7D2":"D9EAD3"):null)}))})
+      h("div",{class:"tr","data-d":"tr"},thD("Type"),walks.map(x=>{const c=thD(pad(x.i+1,2));c.firstChild.style.textAlign="center";return c})),
+      p.rows.length?p.rows.map(r=>{if(r.k==="rmax"||r.k==="rmin"){const f=r.k==="rmax"?"max":"min";
+          return h("div",{class:"tr","data-d":"tr"},cellD(T("small",r.k==="rmax"?"Max Rest":"Min Rest")),walks.map(x=>{const v=(BSC.rest[x.w.id]||{})[f];
+            return cellD(T("small",v==null?"":Math.round(v)+"s",{style:"text-align:center"}),v==null?null:"EDEDED")}))}
+        const key=r.k+r.u.no;return h("div",{class:"tr","data-d":"tr"},cellD(T("small",`${r.k}${r.u.no} ${r.u.name||""}`.trim())),
+        walks.map(x=>{const c=(BSC.freq[x.w.id]||{})[key]||0;return cellD(T("small",c?String(c):"",{style:"text-align:center"}),c?(r.k==="b"?"F8D7D2":"D9EAD3"):null)}))})
       :h("div",{class:"tr","data-d":"tr"},phCell("[b1 Combat Unit]"),walks.map(()=>cellD(T("small",""))))) ]};
 function valCell(v){const src=v&&(v.thumb?urlOf(v.thumb):v.img);
   if(src)return h("div",{class:"slot has thumb","data-x":"i","data-src":src,"data-fit":"contain",style:`width:60%;background-image:url("${src}");background-size:contain`});
@@ -988,27 +991,33 @@ function tokens(text){const out=[];for(const m of String(text||"").matchAll(TOKR
 const unitByNo=no=>doc.battle.units.find(u=>+u.no===+no),eventByNo=no=>doc.battle.events.find(e=>+e.no===+no);
 const enemyName=id=>(doc.battle.enemyTypes.find(t=>t.id===id)||{}).name||"?";
 let BSC=null;
-/** battle-based series: battles set intensity to the unit estimate, events add their delta (an !(e1,20) event then runs for 20 s like rest), walk time = shortest duration.
+/** battle-based series: intensity is a running total; battles add their unit estimate, events add their delta (an !(e1,20) event then runs for 20 s like rest), walk time = shortest duration.
     Decay is a step: only a full decay period (default 30 s) without a battle or event lowers intensity by the decay amount; a battle's end or an event's start restarts that count.
     times[walk id] holds, per counted token, its start time and whether a timed event runs past the subsection's longest duration */
 function battleSeries(){
   const B=doc.battle;const amt=+B.decay.amount||0,per=+B.decay.per||30;
-  let t=0,I=0,calm=0;const pts=[{t:0,I:0}],bands=[],evs=[],ends=[],times={},freq={};let has=false;  // calm: seconds since the last battle or event
+  let t=0,I=0,calm=0;const pts=[{t:0,I:0}],bands=[],evs=[],ends=[],times={},freq={},rest={};let has=false;  // calm: seconds since the last battle or event
   const decay=dur=>{if(dur<=0)return;const end=t+dur;
     while(amt>0&&I>0&&t+per-calm<=end+1e-9){t+=per-calm;calm=0;pts.push({t,I});I=Math.max(0,I-amt);pts.push({t,I})}
     calm+=end-t;t=end;pts.push({t,I})};
   doc.walk.forEach((w,i)=>{const tk=tokens(countedActs(w.acts));const tm=[];let used=0;const t0=t;const fq=freq[w.id]={};
     const dmin=parseFloat(w.dmin),dmax=parseFloat(w.dmax),limit=!isNaN(dmax)?dmax:dmin;
+    /* the frequency table and the rest range count every use, optional lines included. Rest: the longest and shortest !(ss) rest;
+       with none, the longest / shortest duration minus the time of all battles and events */
+    const all=tokens(actLines(actsDOM(w.acts)).map(lineText).join("\n"));if(all.length)has=true;
+    for(const k of all)if(k.k!=="r")fq[k.k+k.no]=(fq[k.k+k.no]||0)+k.n;
+    const rs=all.filter(k=>k.k==="r").map(k=>k.dur),busy=all.filter(k=>k.k!=="r").reduce((a,k)=>a+k.dur,0),hi=!isNaN(dmax)?dmax:dmin;
+    rest[w.id]=rs.length?{max:Math.max(...rs),min:Math.min(...rs)}:{max:isNaN(hi)?null:Math.max(0,hi-busy),min:isNaN(dmin)?null:Math.max(0,dmin-busy)};
     for(const k of tk){has=true;let over=false;const ts=t;
-      if(k.k==="b"){const u=unitByNo(k.no);fq["b"+k.no]=(fq["b"+k.no]||0)+k.n;pts.push({t,I});I=u?(+u.intensity||0)*k.n:I;pts.push({t,I});bands.push({t0:t,t1:t+k.dur,no:k.no});t+=k.dur;pts.push({t,I});used+=k.dur;calm=0}
+      if(k.k==="b"){const u=unitByNo(k.no);pts.push({t,I});I=Math.max(0,I+(u?(+u.intensity||0)*k.n:0));pts.push({t,I});bands.push({t0:t,t1:t+k.dur,no:k.no});t+=k.dur;pts.push({t,I,hold:true});used+=k.dur;calm=0}
       else if(k.k==="r"){decay(k.dur);used+=k.dur}
-      else{const e=eventByNo(k.no);fq["e"+k.no]=(fq["e"+k.no]||0)+k.n;pts.push({t,I});I=Math.max(0,I+(e?(+e.delta||0)*k.n:0));pts.push({t,I});calm=0;evs.push({t,t1:t+k.dur,no:k.no,I});
+      else{const e=eventByNo(k.no);pts.push({t,I});I=Math.max(0,I+(e?(+e.delta||0)*k.n:0));pts.push({t,I});calm=0;evs.push({t,t1:t+k.dur,no:k.no,I});
         decay(k.dur);used+=k.dur;over=k.dur>0&&!isNaN(limit)&&used>limit}
       tm.push({t:ts,over})}
     times[w.id]=tm;const total=isNaN(dmin)?used:dmin;if(total-used>0)decay(total-used);
     if(t>t0)ends.push({t,i});
   });
-  return {pts,bands,evs,ends,times,freq,has,end:t};
+  return {pts,bands,evs,ends,times,freq,rest,has,end:t};
 }
 function tokFormat(html,wid){let k=0;const tm=(BSC&&BSC.times[wid])||[];
   // tokens on optional lines are not in the battle series, so they take no time slot
@@ -1028,8 +1037,10 @@ function tokFormat(html,wid){let k=0;const tm=(BSC&&BSC.times[wid])||[];
   return d.innerHTML}
 /* the intensity line joins its key values (the last value at each moment) with gentle reciprocal curves that bend upwards, like 1/x
    either side of a peak: a rise starts slowly and climbs steeply into the higher value (u/(1+a(1-u))), a fall drops steeply and then
-   flattens out ((1+a)u/(1+au)). With a=1 half way covers a third of a rise or two thirds of a fall. Stretches that hold one value stay flat. */
-function easedPts(pts,a=1,n=20){const k=[];for(const p of pts){if(k.length&&Math.abs(k[k.length-1].t-p.t)<1e-9)k[k.length-1]=p;else k.push(p)}
+   flattens out ((1+a)u/(1+au)). With a=1 half way covers a third of a rise or two thirds of a fall. Stretches that hold one value stay flat.
+   A battle holds its value to its last second: when something changes the value at that very moment (say a second battle), the line steps. */
+function easedPts(pts,a=1,n=20){const k=[];
+  for(const p of pts){const l=k[k.length-1];if(l&&Math.abs(l.t-p.t)<1e-9&&!(l.hold&&l.I!==p.I))k[k.length-1]=l.hold&&!p.hold?{...p,hold:true}:p;else k.push(p)}
   const key=k.filter((p,i)=>!(i>0&&i<k.length-1&&k[i-1].I===p.I&&k[i+1].I===p.I));
   const out=key.slice(0,1);for(let i=1;i<key.length;i++){const p=key[i-1],q=key[i];if(p.I===q.I){out.push(q);continue}
     for(let j=1;j<=n;j++){const u=j/n;out.push({t:p.t+(q.t-p.t)*u,I:p.I+(q.I-p.I)*(q.I>p.I?u/(1+a*(1-u)):(1+a)*u/(1+a*u))})}}
@@ -1594,7 +1605,7 @@ const HELP=[
   ["? action","An action starting with ? (after its number) is optional: shown as a grey [Option] and left out of every statistic."],
   ["PO camera","+ Camera on a PO entry stores the level file, Location and Rotation; paste both from Unreal at once. Click Loc or Rot to copy it for pasting into Unreal."],
   ["Characters","Three to a row; a second row shares the page while it fits, otherwise it starts a new page."],
-  ["Battle intensity","A battle sets intensity to its unit's estimate, events add their change, and each full period without either lowers it (default -2 per 30 s; a battle or event restarts the count)."],
+  ["Battle intensity","Intensity is a running total: a battle adds its unit's estimate, an event adds its change, and each full period without either lowers it (default -2 per 30 s; a battle or event restarts the count)."],
   ["Battle time","Each subsection uses its shortest duration; time not covered by battles or rests counts as exploration and counts towards the decay period."],
   ["Beats Chart (Time Based)","Adds each subsection's Intensity +/- over its min and max durations; the time axis has 5 to 20 divisions."],
   ["Beats Timeline","Generated from Brief, type and shortest duration, or replaced by an image; types are edited in Battle data."],
