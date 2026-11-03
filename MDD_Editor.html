@@ -81,6 +81,7 @@ span.f{display:inline;min-height:0}
 .f:empty::before{content:attr(data-ph);color:var(--ph);pointer-events:none}
 .f.phred:empty::before{color:var(--red)}
 .f ul,.f ol{margin:0;padding-left:5mm}
+.f ul ul,.f ol ul,.f li>ul{list-style:circle}.f ol ol,.f ul ol,.f li>ol{list-style:lower-alpha}
 .row{display:grid;column-gap:5mm;align-items:start}
 .row.lr{grid-template-columns:1fr auto;align-items:baseline}
 .col{display:flex;flex-direction:column;gap:1.6mm;min-width:0}
@@ -265,6 +266,8 @@ span.f{display:inline;min-height:0}
   <button data-c="red" title="Mark as current level (red)" style="color:#C00000;font-weight:700">Red</button>
   <button data-c="insertUnorderedList" title="Bulleted list">• List</button>
   <button data-c="insertOrderedList" title="Numbered list">1. List</button>
+  <button data-c="indent" title="Indent list item (Tab), two levels at most">→</button>
+  <button data-c="outdent" title="Outdent list item (Shift+Tab)">←</button>
   <button data-c="removeFormat" title="Clear formatting">Clear</button>
 </div>
 <div id="ovl"></div>
@@ -433,7 +436,9 @@ function sanitize(html){
 const plain=html=>{const d=document.createElement("div");d.innerHTML=String(html||"").replace(/<(div|li|br)[^>]*>/gi,"\n$&");return d.textContent.replace(/ /g," ").replace(/\n{2,}/g,"\n").trim()};
 /** DOM element -> [{runs:[{t,b,i,u,c}], list, n}] used by Word + PPT exporters */
 function richParas(root){
-  const paras=[];let cur;const nl=(list=null,n=0)=>{cur={runs:[],list,n};paras.push(cur)};nl();
+  const paras=[];let cur,lv=0;const nl=(list=null,n=0)=>{const p={runs:[],list,n,lv:Math.min(lv,2)};if(list&&cur&&!cur.runs.length&&!cur.list)Object.assign(cur,p);else{cur=p;paras.push(cur)}};nl();
+  // lists nest two levels deep; a nested list may sit inside an <li> or directly in its parent list
+  const lst=(c,g)=>{lv++;let n=0;for(const li of c.children){if(li.tagName==="UL"||li.tagName==="OL"){lst(li,g);continue}nl(c.tagName==="UL"?"ul":"ol",++n);walk(li,g)}if(!--lv)nl()};
   const BLK=new Set(["DIV","P","LI"]);
   const walk=(node,f)=>{for(const c of node.childNodes){
     if(c.nodeType===3){const t=c.nodeValue.replace(/\u00AD/g,"").replace(/ /g," ").replace(/[\t\r\n]+/g," ");if(t)cur.runs.push({t,...f});continue}
@@ -444,7 +449,7 @@ function richParas(root){
     if(c.classList.contains("red")||T==="FONT")g.c="C00000";else if(c.classList.contains("tokb"))g.c="9C2A1F";else if(c.classList.contains("toke"))g.c="38761D";else if(c.classList.contains("tokr"))g.c="595959";else if(c.classList.contains("tokopt"))g.c="8C8C8C";else if(c.classList.contains("tokx")){g.c="C00000";g.b=true}
     if(!g.c&&c.classList.contains("ph")&&g.c!=="C00000")g.c="8C8C8C";
     if(T==="BR"){if(BLK.has(node.tagName)&&!c.nextSibling)continue;nl();continue}
-    if(T==="UL"||T==="OL"){let n=0;for(const li of c.children){nl(T==="UL"?"ul":"ol",++n);walk(li,g)}nl();continue}
+    if(T==="UL"||T==="OL"){lst(c,g);continue}
     if(BLK.has(T)){if(cur.runs.length)nl();walk(c,g);nl();continue}
     walk(c,g);
   }};
@@ -452,6 +457,8 @@ function richParas(root){
   while(paras.length>1&&!paras[paras.length-1].runs.length)paras.pop();
   return paras;
 }
+/** list marker for exporters: level 1 "• " / "1. ", level 2 "◦ " / "a. " */
+const listMark=p=>!p.list?"":p.lv>1?(p.list==="ul"?"◦ ":String.fromCharCode(96+((p.n-1)%26+1))+". "):(p.list==="ul"?"• ":p.n+". ");
 
 /* ---------------- emptiness (drives "Hide empty on export") ---------------- */
 const has=v=>!!(v&&String(v).trim());
@@ -504,7 +511,7 @@ function F(path,ph,o={}){
   const el=h(tag,at);
   const disp=o.tok?tokFormat(v,o.wid):v;if(o.tok){el.dataset.tok="1";el.dataset.wid=o.wid}
   if(isEdit()){el.contentEditable="true";el.dataset.ph=ph;el.spellcheck=true;if(o.rich)el.innerHTML=disp;else el.textContent=v}
-  else if(filled(v,o.rich)){if(o.rich)el.innerHTML=disp;else el.textContent=v}
+  else if(filled(v,o.rich)){if(o.rich)el.innerHTML=disp;else el.textContent=o.show?o.show(v):v}
   else el.append(h("span",{class:"ph"+(o.red?" red":"")},ph));
   if(!isEdit()&&/\bjus\b/.test(o.cls||"")&&filled(v,o.rich))softHyphens(el);
   return el;
@@ -542,6 +549,7 @@ function lastEditText(){const s=doc.state.lastEdit||doc.meta.created;if(!s)retur
 const chunk=(a,n)=>{const r=[];for(let i=0;i<a.length;i+=n)r.push(a.slice(i,i+n));return r};
 let NOCOVER=false;
 let CHAR_SOLO=new Set();   // character row indices that start their own page
+let WALK_SOLO=new Set();   // walkthrough subsection indices that start their own page
 const newBreaks=()=>({aspec:new Set(),aguide:new Set(),appB:new Set(),appA:new Set()});
 let TBL_BREAKS=newBreaks();   // appendix row indices that start a new page, measured by renderInto
 const splitAt=(a,brk)=>{const r=[];a.forEach((x,i)=>{if(!r.length||brk.has(i))r.push({rows:[],r0:i});r[r.length-1].rows.push(x)});return r};
@@ -576,10 +584,11 @@ function layout(){
   let r0=0;cc.forEach((rows,i)=>{n=add({t:"chars",sec:SEC.ctx,rows,r0,first:i===0,h1:ctxFirst&&i===0,last:i===cc.length-1});r0+=rows.length;if(i===0){if(ctxFirst)toc.push({l:1,num:"2",t:"Context",p:n});toc.push({l:2,num:"2.2",t:"Characters",p:n})}});
   // Walkthrough (keeps original numbering when empties are hidden)
   const walk=doc.walk.map((w,i)=>({w,i})).filter(x=>!HIDE||!E.walk(x.w));
-  // two subsections share a page; one with four or five picture rows takes a page to itself so its pictures keep their size
-  const wc=[];for(const x of walk){const big=(x.w.rows??2)>3,l=wc[wc.length-1];if(!big&&l&&l.length===1&&(l[0].w.rows??2)<=3)l.push(x);else wc.push([x])}
+  // two subsections share a page while they fit; one that would overflow (more picture rows, longer text) starts the next page
+  const wc=[];for(const x of walk){const l=wc[wc.length-1];if(l&&l.length===1&&!WALK_SOLO.has(x.i))l.push(x);else wc.push([x])}
+  const wnum=walkNums();
   wc.forEach((c,i)=>{n=add({t:"walk",sec:SEC.walk,items:c,first:i===0,last:i===wc.length-1});if(i===0)toc.push({l:1,num:"3",t:"Mission Walkthrough",p:n});
-    c.forEach(x=>toc.push({l:2,num:"3."+pad(x.i+1,2),t:x.w.brief,ph:"[Brief]",p:n}))});
+    c.forEach(x=>{const r=wnum[x.i];toc.push({l:2,num:"3."+r.no,t:(r.brief.trim()+(r.from?" ("+r.from.join(",")+")":"")).trim(),ph:"[Brief]",p:n})})});
   const legs=doc.legends.items.filter(it=>!HIDE||!E.leg(it));
   legs.forEach((it,i)=>{n=add({t:"leg",sec:SEC.leg,item:it,first:i===0});if(i===0)toc.push({l:1,num:"4",t:"Layout Plan Legends",p:n});toc.push({l:2,num:"4."+(i+1),t:it.name,ph:"[Master/Catalogues]",p:n})});
   const plans=doc.plans.map((it,i)=>({it,i})).filter(x=>!HIDE||!E.plan(x.it,x.i));
@@ -715,14 +724,31 @@ const WMID=["Top-down / Overall Space","Key Highlight View","Free Pick A","Free 
 function walkMixed(text,imgs){const n=imgs.length;if(!n)return ROW("1fr",text);
   const [cols,blk]=n===1?["4fr 2fr",imgs[0]]:n===2?["3fr 3fr",GRID(2,imgs)]:n===3?["3fr 3fr",ROW("2fr 1fr",imgs[0],COL(imgs[1],imgs[2]))]:n===4?["4fr 2fr",GRID(2,imgs)]:["3fr 3fr",GRID(3,imgs)];
   return ROW(cols,text,blk)}
+/* Brief prefixes route the walkthrough: "##1 Title" is a step on path 1 (rendered 07a), "##2" path 2 (07b) and so on;
+   "{1,2} Title" merges those paths, taking the next free number and naming the last step of each merged path: 09 - Title (07b,08a).
+   A plain brief while paths are open closes them all. Returns per subsection {no, brief (prefix stripped), from:[labels]}. */
+const BR_PATH=/^\s*##\s*(\d+)\s*/,BR_MERGE=/^\s*[{｛]\s*(\d+(?:\s*[,，、]\s*\d+)*)\s*[}｝]\s*/;
+function walkNums(list=doc.walk){let top=0,base=0;const open=new Map();
+  return list.map(w=>{const b=w.brief||"";let m;
+    if((m=b.match(BR_PATH))){const p=Math.max(1,+m[1]);const n=(open.has(p)?open.get(p).n:base)+1;top=Math.max(top,n);
+      const no=pad(n,2)+(p<=26?String.fromCharCode(96+p):"_"+p);open.set(p,{n,no});return {no,brief:b.slice(m[0].length),from:null}}
+    const n=++top;let from=null;
+    if((m=b.match(BR_MERGE))){const ps=m[1].split(/[,，、]/).map(x=>Math.max(1,+x));
+      from=ps.map(p=>open.get(p)).filter(Boolean).sort((x,y)=>x.n-y.n||(x.no<y.no?-1:1)).map(x=>x.no);ps.forEach(p=>open.delete(p));
+      base=n;return {no:pad(n,2),brief:b.slice(m[0].length),from:from.length?from:null}}
+    open.clear();base=n;return {no:pad(n,2),brief:b,from:null}})}
+const walkNo=i=>{const r=walkNums()[i];return r?r.no:pad(i+1,2)};
 function walkTotals(){let a=0,b=0,ok=false;for(const w of doc.walk){const x=parseFloat(w.dmin),y=parseFloat(w.dmax);if(!isNaN(x)){a+=x;ok=true}if(!isNaN(y)){b+=y;ok=true}else if(!isNaN(x))b+=x}return ok?`${Math.round(a)}-${Math.round(b)}s`:null}
 R.walk=(p)=>{const out=[];const halves=[];const tot=walkTotals();const cnt=HIDE?doc.walk.filter(w=>!E.walk(w)).length:doc.walk.length;
   if(p.first)out.push(LR(T("h1","Mission Walkthrough"),T("meta",[(tot||!HIDE)?L1("Total Duration: "):null,(tot||!HIDE)?h("span",{id:"walkTotal"},PH(tot,"[sss]-[sss]")):null,(tot||!HIDE)?" · ":null,cnt+" subsections"],{class:"r"})));
-  p.items.forEach(({w,i},j)=>{const b="walk."+w.id;const out=[];halves.push(out);const nr=w.rows??2;
+  const nums=walkNums();
+  p.items.forEach(({w,i},j)=>{const b="walk."+w.id;const out=[];halves.push(out);const nr=w.rows??2;const wn=nums[i];
     if(j>0)out.push(HR());
-    const br=F(b+".brief","[Brief]",{inline:true});
+    // edit shows the raw brief (with its ##n / {n,m} routing prefix); output shows the title alone plus the merged steps
+    const br=isEdit()||has(wn.brief)?F(b+".brief","[Brief]",{inline:true,show:()=>wn.brief.trim()}):null;
+    const from=wn.from?h("span",null," ("+wn.from.join(",")+")"):null;
     const cat=typeName(w.cat);const catEl=isEdit()?h("select",{class:"walkcat ctl","data-act":"walk-cat","data-id":w.id,"aria-label":"Beat type"},h("option",{value:""},"(type)"),doc.beats.types.map(t=>h("option",{value:t.id,selected:t.id===w.cat},t.name||"(unnamed)"))):(cat?h("span",null," ("+cat+")"):(HIDE?null:h("span",{class:"ph"}," ([Type])")));
-    out.push(h("div",{"data-x":"t","data-s":"h2"},pad(i+1,2),br?" - ":null,br,catEl,ICTL(["walk-up","↑",w.id],["walk-down","↓",w.id],["walk-ins","+ Insert after",w.id],["walk-rm","Remove",w.id],nr<5?["walk-row-add","+ Image row",w.id]:null,nr>0?["walk-row-rm","− Image row",w.id]:null)));
+    out.push(h("div",{"data-x":"t","data-s":"h2"},wn.no,br?" - ":null,br,from,catEl,ICTL(["walk-up","↑",w.id],["walk-down","↓",w.id],["walk-ins","+ Insert after",w.id],["walk-rm","Remove",w.id],nr<5?["walk-row-add","+ Image row",w.id]:null,nr>0?["walk-row-rm","− Image row",w.id]:null)));
     const it=F(b+".int","{+/-}[Amount]",{inline:true}),d1=F(b+".dmin","[sss]",{inline:true}),d2=F(b+".dmax","[sss]",{inline:true});
     /* legends are optional; once any picture of the subsection has one, every picture keeps a legend line (blank if it has none) so the pictures stay level */
     const capOn=!HIDE||w.mc.some(has)||w.rc.some(has);
@@ -734,7 +760,7 @@ R.walk=(p)=>{const out=[];const halves=[];const tot=walkTotals();const cnt=HIDE?
         LR(it?T("body",[L1("Intensity: "),it]):null,(d1||d2)?T("body",[L1("Duration: "),d1,d1&&d2?"-":null,d2,HIDE?"s":null],{class:"r"}):null),
         F(b+".acts","[1. Main player action  2. Next action  (optional exploration in brackets)  3. ...  Battle !(b1,45)  Group !(b1,45)*3  Rest !(30)  Event !(e1,20)  Optional: start with ?]",{rich:true,tok:true,wid:w.id}));
     const ref=nn(WREF.slice(0,nr).map((l,k)=>fig("r",k,l)));
-    out.push(!nr?ROW("1fr",text):HIDE&&(mid.length<2*nr||ref.length<nr)?walkMixed(text,[...mid,...ref]):ROW(nr===3?"6fr 2fr 1fr":"3fr 2fr 1fr",text,mid.length?GRID(2,mid):COL(),COL(...ref)));  // three rows: pictures at 2/3 size keep the height of two; four or five have a page to themselves
+    out.push(!nr?ROW("1fr",text):HIDE&&(mid.length<2*nr||ref.length<nr)?walkMixed(text,[...mid,...ref]):ROW("3fr 2fr 1fr",text,mid.length?GRID(2,mid):COL(),COL(...ref)));
   });
   out.push(SPLIT(...halves));
   if(isEdit()&&p.last)out.push(h("div",{class:"addbar"},h("button",{"data-act":"walk-add"},"+ Add subsection")));
@@ -784,7 +810,7 @@ R.bat2=(p)=>{const B=doc.battle;return [batH1(p),p.first?T("h2","Events & Defaul
 R.bat3=(p)=>{const walks=doc.walk.map((w,i)=>({w,i})).filter(x=>!HIDE||!E.walk(x.w));const n=walks.length;
   return [batH1(p),p.first?T("h2","Battle & Event Frequency by Brief"):null,p.first?T("cap","Count of each combat unit (red) and event (green) per Mission Walkthrough subsection, optional actions included. Max / Min Rest: the longest and shortest !(ss) rest, or with none, the longest / shortest duration minus all battle and event time."):null,
     h("div",{class:"tbl","data-d":"tbl",style:`grid-template-columns:42mm repeat(${Math.max(1,n)},minmax(0,1fr))`},
-      h("div",{class:"tr","data-d":"tr"},thD("Type"),walks.map(x=>{const c=thD(pad(x.i+1,2));c.firstChild.style.textAlign="center";return c})),
+      h("div",{class:"tr","data-d":"tr"},thD("Type"),walks.map(x=>{const c=thD(walkNo(x.i));c.firstChild.style.textAlign="center";return c})),
       p.rows.length?p.rows.map(r=>{if(r.k==="rmax"||r.k==="rmin"){const f=r.k==="rmax"?"max":"min";
           return h("div",{class:"tr","data-d":"tr"},cellD(T("small",r.k==="rmax"?"Max Rest":"Min Rest")),walks.map(x=>{const v=(BSC.rest[x.w.id]||{})[f];
             return cellD(T("small",v==null?"":Math.round(v)+"s",{style:"text-align:center"}),v==null?null:"EDEDED")}))}
@@ -962,7 +988,7 @@ const legendItem=(svg,x,label,draw)=>{draw(x);svg.append(SV("text",{x:x+60,y:48,
 /* time-based beats chart (min / max durations) */
 function chartData(){const pts=[{n:0,a:0,b:0,I:0}];let a=0,b=0,I=0,has=false;
   doc.walk.forEach((w,i)=>{const dmin=parseFloat(w.dmin),dmax=parseFloat(w.dmax),di=parseFloat(String(w.int).replace(/\s/g,""));if(isNaN(dmin)&&isNaN(dmax)&&isNaN(di))return;has=true;
-    a+=isNaN(dmin)?(isNaN(dmax)?0:dmax):dmin;b+=isNaN(dmax)?(isNaN(dmin)?0:dmin):dmax;I+=isNaN(di)?0:di;pts.push({n:i+1,a,b,I})});return {pts,has}}
+    a+=isNaN(dmin)?(isNaN(dmax)?0:dmax):dmin;b+=isNaN(dmax)?(isNaN(dmin)?0:dmin):dmax;I+=isNaN(di)?0:di;pts.push({n:i,a,b,I})});return {pts,has}}
 function chartSVG(){
   const {pts,has}=chartData();const ax=axisTicks(has?Math.max(...pts.map(p=>p.b)):960);
   const yLo=has?Math.min(0,...pts.map(p=>p.I)):0,yHiRaw=has?Math.max(1,...pts.map(p=>p.I)):10;const yStep=niceNum((yHiRaw-yLo)/5);
@@ -970,7 +996,7 @@ function chartSVG(){
   const {X,Y,L,Rr,Tp,B}=chartFrame(svg,{xMax:ax.max,xStep:ax.step,xN:ax.n,yMin:Math.floor(yLo/yStep)*yStep,yMax:Math.ceil(yHiRaw/yStep)*yStep,yStep,title:`${lvl()}${lvl()?" - ":""}Intensity over time`});
   if(has){svg.append(SV("polyline",{points:pts.map(p=>`${X(p.b)},${Y(p.I)}`).join(" "),fill:"none",stroke:"#ED7D31","stroke-width":4,"stroke-dasharray":"14 10"}));
     svg.append(SV("polyline",{points:pts.map(p=>`${X(p.a)},${Y(p.I)}`).join(" "),fill:"none",stroke:"#2F5496","stroke-width":5}));
-    pts.slice(1).forEach(p=>svg.append(SV("circle",{cx:X(p.a),cy:Y(p.I),r:7,fill:"#2F5496"}),SV("text",{x:X(p.a),y:Y(p.I)-16,"text-anchor":"middle","font-size":20,fill:"#1F3864"},pad(p.n,2))))}
+    pts.slice(1).forEach(p=>svg.append(SV("circle",{cx:X(p.a),cy:Y(p.I),r:7,fill:"#2F5496"}),SV("text",{x:X(p.a),y:Y(p.I)-16,"text-anchor":"middle","font-size":20,fill:"#1F3864"},walkNo(p.n))))}
   else svg.append(SV("text",{x:(L+Rr)/2,y:(Tp+B)/2,"text-anchor":"middle","font-size":28,fill:"#8C8C8C"},"[Auto-generated from Mission Walkthrough › Intensity & Duration]"));
   let x=1000;x=legendItem(svg,x,"Min duration",x=>svg.append(SV("line",{x1:x,x2:x+50,y1:40,y2:40,stroke:"#2F5496","stroke-width":5})));
   legendItem(svg,x,"Max duration",x=>svg.append(SV("line",{x1:x,x2:x+50,y1:40,y2:40,stroke:"#ED7D31","stroke-width":4,"stroke-dasharray":"14 10"})));
@@ -1055,7 +1081,7 @@ function battleChartSVG(){
   const {X,Y,L,Rr,Tp,B}=chartFrame(svg,{xMax:ax.max,xStep:ax.step,xN:ax.n,yMin:0,yMax:Math.ceil(yHi/yStep)*yStep,yStep,title:`${lvl()}${lvl()?" - ":""}Battle intensity`});
   if(S.has){
     S.bands.forEach(b=>{svg.append(SV("rect",{x:X(b.t0),y:Tp,width:Math.max(2,X(b.t1)-X(b.t0)),height:B-Tp,fill:"#F4CCCC","fill-opacity":.6}),SV("text",{x:(X(b.t0)+X(b.t1))/2,y:Tp+22,"text-anchor":"middle","font-size":18,fill:"#9C2A1F","font-weight":700},"b"+b.no))});
-    S.ends.forEach(e=>svg.append(SV("line",{x1:X(e.t),x2:X(e.t),y1:Tp,y2:B,stroke:"#9AA7BD","stroke-width":1.5,"stroke-dasharray":"6 6"}),SV("text",{x:X(e.t)-6,y:B-10,"text-anchor":"end","font-size":16,fill:"#5A6577"},pad(e.i+1,2))));
+    S.ends.forEach(e=>svg.append(SV("line",{x1:X(e.t),x2:X(e.t),y1:Tp,y2:B,stroke:"#9AA7BD","stroke-width":1.5,"stroke-dasharray":"6 6"}),SV("text",{x:X(e.t)-6,y:B-10,"text-anchor":"end","font-size":16,fill:"#5A6577"},walkNo(e.i))));
     svg.append(SV("polyline",{points:easedPts(S.pts).map(p=>`${X(p.t)},${Y(p.I)}`).join(" "),fill:"none",stroke:"#C0504D","stroke-width":4,"stroke-linejoin":"round"}));
     S.evs.forEach(e=>{if(e.t1>e.t)svg.append(SV("rect",{x:X(e.t),y:Tp,width:Math.max(2,X(e.t1)-X(e.t)),height:B-Tp,fill:"#D9EAD3","fill-opacity":.6}))});
     S.evs.forEach(e=>{const x=X(e.t),y=Y(e.I);svg.append(SV("path",{d:`M${x} ${y-14} L${x+11} ${y+6} L${x-11} ${y+6} Z`,fill:"#38761D"}),SV("text",{x,y:y-22,"text-anchor":"middle","font-size":18,fill:"#38761D","font-weight":700},"e"+e.no))});
@@ -1080,7 +1106,7 @@ function timelineSVG(){
   svg.append(SV("rect",{x:L,y:Y0,width:Rr-L,height:Y1-Y0,fill:"#F2F2F2"}));
   if(!D.has)svg.append(SV("text",{x:800,y:Y0-40,"text-anchor":"middle","font-size":22,fill:"#8C8C8C"},"[Auto-generated from Mission Walkthrough › Brief, Type and Duration]"));
   D.segs.forEach((s,k)=>{const x0=X(s.t0),x1=X(s.t1);svg.append(SV("rect",{x:x0,y:Y0,width:Math.max(1,x1-x0),height:Y1-Y0,fill:typeColor(s.w.cat),stroke:"#FFFFFF","stroke-width":2}));
-    const lv=k%3;const ty=150-lv*40;const cx=(x0+x1)/2;const max=Math.max(8,Math.floor(Math.max(x1-x0,180)/11));const lab=`${pad(s.i+1,2)} ${s.w.brief||""}`.trim();
+    const lv=k%3;const ty=150-lv*40;const cx=(x0+x1)/2;const max=Math.max(8,Math.floor(Math.max(x1-x0,180)/11));const wr=walkNums()[s.i];const lab=`${wr.no} ${wr.brief}`.trim();
     svg.append(SV("line",{x1:cx,x2:cx,y1:ty+6,y2:Y0,stroke:"#9AA7BD","stroke-width":1.2}),SV("text",{x:cx,y:ty,"text-anchor":"middle","font-size":17,fill:"#1F3864"},lab.length>max?lab.slice(0,max-1)+"…":lab))});
   // type labels below (merge consecutive runs)
   const runs=[];D.segs.forEach(s=>{const last=runs[runs.length-1];if(last&&last.cat===s.w.cat&&last.t1===s.t0)last.t1=s.t1;else runs.push({cat:s.w.cat,t0:s.t0,t1:s.t1})});
@@ -1196,7 +1222,7 @@ function flowSVG(ch,opt={}){
       case "wait":g.append(SV("path",{d:`M${x-w/2} ${y-hh/2} H${x+w/2-hh/2} A${hh/2} ${hh/2} 0 0 1 ${x+w/2-hh/2} ${y+hh/2} H${x-w/2} Z`,fill:"#FFF2CC",...sk}));
         lines(g,x-10,y-hh/4+2,wrapText(lab||ph(n),Math.floor((w-hh/2-16)/7.2),1),12,14,gray?"#8C8C8C":"#000");g.append(SV("line",{x1:x-w/2+8,x2:x+w/2-hh/2,y1:y,y2:y,stroke:"#BFBFBF","stroke-width":1}));
         lines(g,x-10,y+hh/4,[n.time||((!opt.edit&&HIDE)?"":"[00s]")],12,14,n.time?"#1F3864":"#8C8C8C",true);break}
-    const refs=(n.refs||[]).filter(Boolean).map(id=>{const i=doc.walk.findIndex(w=>w.id===id);return i<0?null:pad(i+1,2)}).filter(Boolean);
+    const refs=(n.refs||[]).filter(Boolean).map(id=>{const i=doc.walk.findIndex(w=>w.id===id);return i<0?null:walkNo(i)}).filter(Boolean);
     if(refs.length)g.append(T(x+w/2,y-hh/2-6,"MW "+refs.join("·"),{a:"end",fs:11,fill:"#2E74B5"}));
     if(opt.edit)g.append(T(x-w/2,y-hh/2-6,n.id.toUpperCase(),{a:"start",fs:10,fill:"#9AA7BD"}));
     gN.append(g)};
@@ -1211,7 +1237,7 @@ function flowSVG(ch,opt={}){
 function chartEditor(id){
   const src=doc.flow.charts.find(c=>c.id===id);if(!src)return;const ch=JSON.parse(JSON.stringify(src));ch.seq=ch.seq||ch.nodes.length;
   const prev=h("div",{class:"fcprev"}),warn=h("div",{class:"fcwarn",role:"status"}),grid=h("div",{class:"fctbl"});
-  const walkOpts=[["","—"],...doc.walk.map((w,i)=>[w.id,pad(i+1,2)+(w.brief?" "+w.brief:"")])];
+  const wns=walkNums(),walkOpts=[["","—"],...doc.walk.map((w,i)=>[w.id,wns[i].no+(has(wns[i].brief)?" "+wns[i].brief.trim():"")])];
   const SEL=(val,opts,on,aria)=>h("select",{"aria-label":aria,onchange:e=>on(e.target.value)},opts.map(([v,t])=>h("option",{value:v,selected:v===val},t)));
   const lab=n=>`${n.id.toUpperCase()}${n.label?" "+n.label:" ("+FT[n.type].t+")"}`;
   const targets=self=>[["","— none"],...ch.nodes.filter(n=>n.id!==self.id&&n.type!=="sync"&&n.type!=="start").map(n=>[n.id,lab(n)])];
@@ -1300,7 +1326,7 @@ function battleEditor(){
 /* ---------------- render all ---------------- */
 let CURL=null;
 function renderInto(container,mode){
-  const pm=MODE,ph=HIDE;MODE=mode;HIDE=mode==="export"&&EXP.hide;BSC=battleSeries();CHAR_SOLO=new Set();TBL_BREAKS=newBreaks();
+  const pm=MODE,ph=HIDE;MODE=mode;HIDE=mode==="export"&&EXP.hide;BSC=battleSeries();CHAR_SOLO=new Set();WALK_SOLO=new Set();TBL_BREAKS=newBreaks();
   // two character rows share a page while they fit; a second row that overflows moves to its own page and the rest reflow.
   // appendix tables start on one page and are broken where the measured rows run out of room.
   TOC_FIT={leg:false,plan:Infinity};let guard=0;for(;;){CURL=layout();const N=CURL.P.length;container.textContent="";
@@ -1308,12 +1334,14 @@ function renderInto(container,mode){
       pg.append(...chromeHF(p,N,i));const body=h("div",{class:"body"});body.append(...R[p.t](p,CURL).filter(Boolean));pg.append(body);container.append(pg)});
     const pgs=$$(".page",container);const i=CURL.P.findIndex((p,k)=>p.t==="chars"&&p.rows.length>1&&overflows(pgs[k]));
     if(i>=0){CHAR_SOLO.add(CURL.P[i].r0+1);continue}
+    const wi=CURL.P.findIndex((p,k)=>p.t==="walk"&&p.items.length>1&&overflows(pgs[k]));
+    if(wi>=0){WALK_SOLO.add(CURL.P[wi].items[1].i);continue}
     const j=CURL.P.findIndex((p,k)=>TBL_BREAKS[p.t]&&overflows(pgs[k]));let br=j<0?[]:tableBreaks(pgs[j],CURL.P[j]).filter(x=>!TBL_BREAKS[CURL.P[j].t].has(x));
     // estimate fell short (e.g. cites): the last row joins the next page, which is measured again if it now overflows
     if(j>=0&&!br.length&&CURL.P[j].rows.length>1&&guard++<200){const p=CURL.P[j],S=TBL_BREAKS[p.t],e=p.r0+p.rows.length;br=[e-1];S.delete(e)}
     if(!br.length)break;br.forEach(x=>TBL_BREAKS[CURL.P[j].t].add(x))}
   if(CURL.P[0]&&CURL.P[0].t==="cover")fitCover($(".page",container),CURL.toc);
-  container.paging={chars:CHAR_SOLO,tbl:TBL_BREAKS};MODE=pm;HIDE=ph;
+  container.paging={chars:CHAR_SOLO,walk:WALK_SOLO,tbl:TBL_BREAKS};MODE=pm;HIDE=ph;
   $$(".slot[data-pending]",container).forEach(async s=>{const u=await ensurePreview(s.dataset.img);if(u){s.style.backgroundImage=`url("${u}")`;s.style.backgroundSize=s.dataset.fit;s.removeAttribute("data-pending")}});
   return CURL;
 }
@@ -1330,7 +1358,7 @@ function checkOverflow(){$$("#pages .page").forEach(pg=>{$$(".f[data-fit]",pg).f
 function outline(){const nav=$("#outline");nav.textContent="";CURL.toc.forEach(e=>{const a=h("a",{href:"#pg"+e.p,class:"l"+e.l},h("span",null,`${e.num} ${e.t||e.ph||""}`),h("span",null,String(e.p)));
   a.addEventListener("click",ev=>{ev.preventDefault();const el=$("#pg"+e.p);if(el)$("#view").scrollTo({top:el.offsetTop*(+$("#pages").dataset.z||1)-10,behavior:"smooth"});$("#side").classList.remove("open")});nav.append(a)})}
 function refreshDerived(){
-  if(!CURL||PREVIEW)return;const pm=MODE;MODE="edit";BSC=battleSeries();const pgn=$("#pages").paging;if(pgn){CHAR_SOLO=pgn.chars;TBL_BREAKS=pgn.tbl}const L=layout();CURL=L;const old=$("#tocBlock");if(old){TOC_FIT={leg:false,plan:Infinity};old.replaceWith(tocBlock(L.toc));fitCover($("#pg1"),L.toc)}
+  if(!CURL||PREVIEW)return;const pm=MODE;MODE="edit";BSC=battleSeries();const pgn=$("#pages").paging;if(pgn){CHAR_SOLO=pgn.chars;WALK_SOLO=pgn.walk||new Set();TBL_BREAKS=pgn.tbl}const L=layout();CURL=L;const old=$("#tocBlock");if(old){TOC_FIT={leg:false,plan:Infinity};old.replaceWith(tocBlock(L.toc));fitCover($("#pg1"),L.toc)}
   const c=$("#beatChart");if(c)c.replaceWith(chartSVG());const bc=$("#battleChart");if(bc)bc.replaceWith(battleChartSVG());const tl=$("#tlChart");if(tl)tl.replaceWith(timelineSVG());const t=$("#walkTotal");if(t){t.textContent="";t.append(PH(walkTotals(),"[sss]-[sss]"))}MODE=pm;
   outline();status();checkOverflow();
 }
@@ -1368,7 +1396,7 @@ function flat(d){
   o["#chars"]={idx:"2.2",label:"Characters",v:d.chars.map(c=>c.id).join(","),kind:"list"};
   d.chars.forEach((c,i)=>{const n="2.2",p="chars."+c.id,nm=`Character ${i+1}`;A(p+".name",n,nm+" › Name",c.name);A(p+".role",n,nm+" › Role",c.role);A(p+".text",n,nm+" › Description",c.text,"r");A(p+".img",n,nm+" › Image",c.img,"i")});
   o["#walk"]={idx:"3",label:"Mission Walkthrough",v:d.walk.map(c=>c.id).join(","),kind:"list"};
-  d.walk.forEach((w,i)=>{const n="3."+pad(i+1,2),p="walk."+w.id,nm=`${pad(i+1,2)} ${w.brief||"[Brief]"}`;
+  const wns=walkNums(d.walk);d.walk.forEach((w,i)=>{const n="3."+wns[i].no,p="walk."+w.id,nm=`${wns[i].no} ${wns[i].brief.trim()||"[Brief]"}`;
     A(p+".brief",n,nm+" › Brief",w.brief);A(p+".desc",n,nm+" › Description",w.desc,"r");A(p+".int",n,nm+" › Intensity",w.int);A(p+".dmin",n,nm+" › Duration min",w.dmin);A(p+".dmax",n,nm+" › Duration max",w.dmax);A(p+".acts",n,nm+" › Player actions",w.acts,"r");A(p+".cat",n,nm+" › Type",typeNameIn(d,w.cat));
     A(p+".rows",n,nm+" › Picture rows",String(w.rows??2));
     WFL.forEach((l,k)=>A(p+".m."+k,n,nm+" › "+l,w.m[k],"i"));WREF.forEach((l,k)=>A(p+".r."+k,n,nm+" › "+l,w.r[k],"i"));
@@ -1433,6 +1461,10 @@ const pages=$("#pages");
 pages.addEventListener("input",e=>{const f=e.target.closest(".f[data-path]");if(!f)return;
   if(!f.textContent&&!f.querySelector("img,li"))f.innerHTML="";
   setP(doc,f.dataset.path,f.classList.contains("rich")?f.innerHTML:f.textContent.replace(/\n/g," "));touched(f.dataset.path);if(f.dataset.fit||f.closest(".page.overflow")||overflows(f.closest(".page")))checkOverflow()});
+// a walkthrough brief's ##n / {n,m} prefix renumbers the subsections: redraw when the numbering changed
+const walkSig=()=>walkNums().map(r=>r.no+(r.from||"")).join("|");let walkSig0=null;
+pages.addEventListener("focusin",e=>{const f=e.target.closest&&e.target.closest('.f[data-path^="walk."][data-path$=".brief"]');if(f)walkSig0=walkSig()});
+pages.addEventListener("focusout",e=>{const f=e.target.closest('.f[data-path^="walk."][data-path$=".brief"]');if(f&&walkSig0!==null&&walkSig()!==walkSig0){walkSig0=null;setTimeout(render)}});
 pages.addEventListener("focusout",e=>{const f=e.target.closest(".f.rich[data-path]");if(!f)return;const s=sanitize(f.innerHTML);setP(doc,f.dataset.path,plain(s)?s:"");if(!plain(s))f.innerHTML="";else if(f.dataset.tok){BSC=battleSeries();f.innerHTML=tokFormat(s,f.dataset.wid)}delete f.dataset.raw;hideRtb();autosave()});
 pages.addEventListener("keydown",e=>{const f=e.target.closest(".f[data-path]");if(f&&!f.classList.contains("rich")&&e.key==="Enter"){e.preventDefault();f.blur()}});
 pages.addEventListener("paste",e=>{
@@ -1529,8 +1561,16 @@ function showRtb(f){rtbFor=f;rtb.style.display="flex";const r=f.getBoundingClien
 function hideRtb(){rtb.style.display="none";rtbFor=null}
 rtb.addEventListener("mousedown",e=>e.preventDefault());
 rtb.addEventListener("click",e=>{const b=e.target.closest("button");if(!b||!rtbFor)return;const c=b.dataset.c;
-  if(c==="red"){document.execCommand("styleWithCSS",false,false);document.execCommand("foreColor",false,"#C00000")}else document.execCommand(c,false,null);
+  if(c==="red"){document.execCommand("styleWithCSS",false,false);document.execCommand("foreColor",false,"#C00000")}
+  else if(c==="indent"||c==="outdent"){listIndent(rtbFor,c==="outdent");return}else document.execCommand(c,false,null);
   rtbFor.dispatchEvent(new Event("input",{bubbles:true}))});
+/** list depth (UL/OL ancestors) of the caret inside field f */
+function listDepth(f){const s=getSelection();let n=s.rangeCount?s.anchorNode:null,d=0;for(;n&&n!==f;n=n.parentNode)if(n.nodeName==="UL"||n.nodeName==="OL")d++;return n===f?d:-1}
+/** Tab / Shift+Tab inside a list item: two list levels at most */
+function listIndent(f,out){const d=listDepth(f);if(d<1)return false;if(!out&&d>=2)return true;
+  document.execCommand(out?"outdent":"indent",false,null);f.dispatchEvent(new Event("input",{bubbles:true}));return true}
+pages.addEventListener("keydown",e=>{if(e.key!=="Tab"||e.ctrlKey||e.altKey||e.metaKey)return;const f=e.target.closest&&e.target.closest(".f.rich[data-path]");
+  if(f&&listIndent(f,e.shiftKey))e.preventDefault()});
 $("#view").addEventListener("scroll",()=>{if(rtbFor)showRtb(rtbFor)},{passive:true});
 
 /* ---------------- modal + toast ---------------- */
@@ -1613,6 +1653,9 @@ const HELP=[
   ["!(e1,20)","Event e1 lasting 20 s, shown as [Event: name (20s)]; its time counts towards the subsection, and [Exceeded Event Time] marks one that runs past the subsection's longest duration."],
   ["!(e1)","Older form: event e1, shown as [Event: name (time it happens)]. While editing it carries an [Outdated] note, which is never exported."],
   ["? action","An action starting with ? (after its number) is optional: shown as a grey [Option] and left out of every statistic."],
+  ["##1 Brief","A Walkthrough Brief starting with ##1, ##2… is a step on path 1, 2…: after 06 it is numbered 07a, 07b, and each path counts on by itself (08a…). Only the title after the prefix is printed."],
+  ["{1,2} Brief","Merges paths 1 and 2: the step takes the next free number and lists where each path ended, e.g. 09 - Title (07b,08a). Later ##n briefs branch again from there (12a, 12b). A plain brief closes any open paths."],
+  ["Lists","In any text box, Tab / Shift+Tab (or → / ← on the format bar) indents a list item one level or back; lists go two levels deep."],
   ["PO camera","+ Camera on a PO entry stores the level file, Location and Rotation; paste both from Unreal at once. Click Loc or Rot to copy it for pasting into Unreal."],
   ["Characters","Three to a row; a second row shares the page while it fits, otherwise it starts a new page."],
   ["Battle intensity","Intensity is a running total: a battle adds its unit's estimate, an event adds its change, and each full period without either lowers it (default -2 per 30 s; a battle or event restarts the count)."],
@@ -1788,8 +1831,8 @@ async function exportDocx(){
       const kids=[...tp.runs.map(r=>new D.TextRun({text:r.t,bold,color:r.c||(bold?"1F3864":"000000"),size:15,font:"JetBrains Mono"})),new D.TextRun({text:"\t"+pg.textContent,size:15,bold,font:"JetBrains Mono",color:bold?"1F3864":"000000"})];
       return [new D.Paragraph({spacing:{after:0},tabStops:[{type:D.TabStopType.RIGHT,position:Math.max(500,tw-60),leader:"dot"}],
         children:el.dataset.p?[new D.InternalHyperlink({anchor:"mddpg"+el.dataset.p,children:kids})]:kids})]}
-    return richParas(el).map(p=>new D.Paragraph({heading:HL[s],alignment:al,spacing:{before:0,after},shading:s==="lead"?{type:D.ShadingType.CLEAR,color:"auto",fill:"EDEDED"}:undefined,indent:p.list?{left:300,hanging:220}:undefined,
-      children:[...(p.list?[new D.TextRun({text:p.list==="ul"?"• ":p.n+". ",size:SZ[s]||17,font:"JetBrains Mono",color:base})]:[]),...runs(p,s,base)]}));
+    return richParas(el).map(p=>new D.Paragraph({heading:HL[s],alignment:al,spacing:{before:0,after},shading:s==="lead"?{type:D.ShadingType.CLEAR,color:"auto",fill:"EDEDED"}:undefined,indent:p.list?{left:300*p.lv,hanging:220}:undefined,
+      children:[...(p.list?[new D.TextRun({text:listMark(p),size:SZ[s]||17,font:"JetBrains Mono",color:base})]:[]),...runs(p,s,base)]}));
   }
   async function image(el){
     const r=el.getBoundingClientRect();const w=Math.round(r.width),hh=Math.round(r.height);const im=await imgFor(el);
@@ -1881,7 +1924,7 @@ async function exportPptx(){
       if(s==="toc"){const tt=$(".tt",el),pe=$(".pg",el),a=rel(tt,pg),b=rel(pe,pg);const o={fontFace:"JetBrains Mono",fontSize:fs,color:base,bold:el.classList.contains("l1"),margin:0,valign:"top"};
         sl.addText(tt.textContent,{...o,x:IN(a.x),y:IN(a.y),w:IN(a.w+6),h:IN(a.h)});sl.addText(pe.textContent,{...o,x:IN(b.x-20),y:IN(b.y),w:IN(b.w+20),h:IN(b.h),align:"right"});continue}
       const ps=richParas(el);const arr=[];
-      ps.forEach((p,k)=>{const pre=p.list?(p.list==="ul"?"• ":p.n+". "):"";if(!p.runs.length)arr.push({text:" ",options:{breakLine:k<ps.length-1}});
+      ps.forEach((p,k)=>{const pre=(p.lv>1?"   ":"")+listMark(p);if(!p.runs.length)arr.push({text:" ",options:{breakLine:k<ps.length-1}});
         p.runs.forEach((ru,j)=>arr.push({text:(j===0?pre:"")+ru.t,options:{bold:!!ru.b||s==="h3"||s==="h4",italic:!!ru.i,underline:ru.u?{style:"sng"}:undefined,color:ru.c||base,breakLine:j===p.runs.length-1&&k<ps.length-1}}))});
       if(!arr.length)continue;
       const right=cs.textAlign==="right"||cs.textAlign==="end";const padW=s==="lead"?0:Math.max(6,r.w*.06);  // the grey lead band keeps its exact box
