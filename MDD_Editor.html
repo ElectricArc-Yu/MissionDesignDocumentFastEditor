@@ -175,7 +175,7 @@ span.f{display:inline;min-height:0}
 .bgsel{font:inherit;font-size:9pt;font-weight:700;color:inherit;border:.5pt solid #9AA7BD;background:#F7F9FC;border-radius:2px;padding:0 .5mm;max-width:100%}
 .btn[aria-pressed=true]{background:var(--accent-soft);border-color:var(--accent)}
 #pages.preview .slot{cursor:default}
-.tok{border-radius:.6mm;padding:0 .5mm;display:inline-block;max-width:100%;box-sizing:border-box}  /* one box: a tag split over two lines is painted over the text before it by the PDF capture */
+.tok{border-radius:.6mm;padding:0 .5mm;-webkit-box-decoration-break:clone;box-decoration-break:clone}  /* flows with the text; the PDF capture splits a wrapped tag per line first (bakeToks) */
 .tokb{background:#F8D7D2;color:#9C2A1F}
 .toke{background:#D9EAD3;color:#38761D}
 .tokr{background:#EDEDED;color:#595959}
@@ -303,7 +303,7 @@ const SEC={cover:"Overview",ctx:"Context",walk:"Mission Walkthrough",leg:"Layout
 const BGK={campaign:{t:"Campaign",ph:"[Campaign backstory and the overall conflict]"},prev:{t:"Previous Levels",ph:"[What happened in the previous levels]"},
   this:{t:"This Level",ph:"[What happens in this level (shown in red)]"},next:{t:"Following Levels",ph:"[What this level sets up for the following levels]"}};
 const EDIT0={q:0,fine:0,fh:false,fv:false,crop:null,b:100,c:100,s:100};
-function newWalk(){return {id:uid(),brief:"",cat:"",desc:"",int:"",dmin:"",dmax:"",acts:"",m:["","","",""],r:["",""]}}
+function newWalk(){return {id:uid(),brief:"",cat:"",desc:"",int:"",dmin:"",dmax:"",acts:"",m:["","","",""],r:["",""],mc:["","","",""],rc:["",""]}}
 function newChar(){return {id:uid(),name:"",img:"",role:"",text:""}}
 const newNode=(label)=>({id:uid(),label,index:"",name:""});
 const newPre=()=>({name:"",n:3,imgs:Array.from({length:9},()=>({img:"",cap:""})),text:["","",""]});
@@ -457,7 +457,7 @@ function richParas(root){
 const has=v=>!!(v&&String(v).trim());
 const hasR=v=>!!plain(v);
 const E={
-  walk:w=>!(has(w.brief)||hasR(w.desc)||has(w.int)||has(w.dmin)||has(w.dmax)||hasR(w.acts)||w.m.some(hasI)||w.r.some(hasI)),
+  walk:w=>!(has(w.brief)||hasR(w.desc)||has(w.int)||has(w.dmin)||has(w.dmax)||hasR(w.acts)||w.m.some(hasI)||w.r.some(hasI)||w.mc.some(has)||w.rc.some(has)),
   char:c=>!(has(c.name)||has(c.role)||hasR(c.text)||hasI(c.img)),
   leg:it=>!(hasI(it.img)||(has(it.name)&&it.name!=="Master")),
   plan:(it,i)=>!(hasI(it.img)||(has(it.name)&&!(i===0&&it.name==="Overview"))),
@@ -721,11 +721,15 @@ R.walk=(p)=>{const out=[];const halves=[];const tot=walkTotals();const cnt=HIDE?
     const cat=typeName(w.cat);const catEl=isEdit()?h("select",{class:"walkcat ctl","data-act":"walk-cat","data-id":w.id,"aria-label":"Beat type"},h("option",{value:""},"(type)"),doc.beats.types.map(t=>h("option",{value:t.id,selected:t.id===w.cat},t.name||"(unnamed)"))):(cat?h("span",null," ("+cat+")"):(HIDE?null:h("span",{class:"ph"}," ([Type])")));
     out.push(h("div",{"data-x":"t","data-s":"h2"},pad(i+1,2),br?" - ":null,br,catEl,ICTL(["walk-up","↑",w.id],["walk-down","↓",w.id],["walk-ins","+ Insert after",w.id],["walk-rm","Remove",w.id])));
     const it=F(b+".int","{+/-}[Amount]",{inline:true}),d1=F(b+".dmin","[sss]",{inline:true}),d2=F(b+".dmax","[sss]",{inline:true});
-    const mid=nn([I(b+".m.0","Top-down / Overall Space"),I(b+".m.2","Free Pick A"),I(b+".m.1","Key Highlight View"),I(b+".m.3","Free Pick B")]);
+    /* legends are optional; once any picture of the subsection has one, every picture keeps a legend line (blank if it has none) so the pictures stay level */
+    const capOn=!HIDE||w.mc.some(has)||w.rc.some(has);
+    const fig=(g,k,lbl)=>{const im=I(`${b}.${g}.${k}`,lbl);if(!im)return null;if(!capOn)return im;
+      const c=F(`${b}.${g}c.${k}`,"[Legend]",{s:"cap"})||T("cap"," ");c.style.textAlign="center";return COL(im,c)};
+    const mid=nn([fig("m",0,"Top-down / Overall Space"),fig("m",2,"Free Pick A"),fig("m",1,"Key Highlight View"),fig("m",3,"Free Pick B")]);
     const text=COL(F(b+".desc","[Detailed description: what happens, what the player learns, how the space supports it]",{rich:true}),
         LR(it?T("body",[L1("Intensity: "),it]):null,(d1||d2)?T("body",[L1("Duration: "),d1,d1&&d2?"-":null,d2,HIDE?"s":null],{class:"r"}):null),
         F(b+".acts","[1. Main player action  2. Next action  (optional exploration in brackets)  3. ...  Battle !(b1,45)  Group !(b1,45)*3  Rest !(30)  Event !(e1,20)  Optional: start with ?]",{rich:true,tok:true,wid:w.id}));
-    const ref=nn([I(b+".r.0","Main Reference"),I(b+".r.1","Mood Picture")]);
+    const ref=nn([fig("r",0,"Main Reference"),fig("r",1,"Mood Picture")]);
     out.push(HIDE&&(mid.length<4||ref.length<2)?walkMixed(text,[...mid,...ref]):ROW("3fr 2fr 1fr",text,mid.length?GRID(2,mid):COL(),COL(...ref)));
   });
   out.push(SPLIT(...halves));
@@ -751,7 +755,7 @@ R.guide=(p)=>[flowH1(p),p.gfirst?T("h2","Exploration Guidance"):null,
   (isEdit()&&p.last)?h("div",{class:"addbar"},h("button",{"data-act":"guide-add"},"+ Add guidance item")):null];
 R.beats1=(p)=>[p.h1?T("h1","Beats"):null,T("h2","Beats Chart (Time Based)"),chartSVG()];
 R.beatsB=(p)=>[p.h1?T("h1","Beats"):null,T("h2","Beats Chart (Battle Based)"),
-  T("cap",`Shortest durations. A battle sets intensity to its combat unit estimate, events add their change, and time outside combat drops ${doc.battle.decay.amount} every ${doc.battle.decay.per}s.`),battleChartSVG()];
+  T("cap",`Shortest durations. A battle sets intensity to its combat unit estimate, events add their change, and every full ${doc.battle.decay.per}s without a battle or event drops it by ${doc.battle.decay.amount}.`),battleChartSVG()];
 function tlModeCtl(){if(!isEdit())return null;return h("select",{class:"ctl","data-act":"tl-mode","aria-label":"Timeline source",style:"font:inherit;font-size:7.5pt;margin-left:4mm"},
   [["auto","Generate from Brief, type and time"],["image","Use an image"]].map(([v,t])=>h("option",{value:v,selected:doc.beats.tlMode===v},t)))}
 R.beats2=(p)=>[p.h1?T("h1","Beats"):null,h("div",{"data-x":"t","data-s":"h2"},"Beats Timeline",tlModeCtl()),
@@ -771,7 +775,7 @@ R.bat2=(p)=>{const B=doc.battle;return [batH1(p),p.first?T("h2","Events & Defaul
   h("div",{class:"tbl","data-d":"tbl",style:"grid-template-columns:9% 61% 30%"},h("div",{class:"tr","data-d":"tr"},["No","Event","Intensity Change"].map(thD)),
     p.rows.length?p.rows.map(e=>h("div",{class:"tr","data-d":"tr"},cellD(T("small","e"+e.no)),cellD(T("small",e.name||"—")),cellD(T("small",e.delta===""?"—":(+e.delta>0?"+":"")+e.delta))))
     :h("div",{class:"tr","data-d":"tr"},["[e1]","[Event Name]","[+/-Amount]"].map(phCell))),
-  p.last?T("body",[L1("Natural decay: "),`-${B.decay.amount} every ${B.decay.per}s outside combat`]):null,
+  p.last?T("body",[L1("Natural decay: "),`-${B.decay.amount} after every ${B.decay.per}s without a battle or event`]):null,
   (p.last&&!HIDE)?T("cap","Mission Walkthrough actions: !(b1,45) = 45 s battle with combat unit b1 · !(b1,45)*3 = three b1 units at once, intensity added · !(30) = 30 s rest · !(e1,20) = event e1 lasting 20 s · !(e1) = event e1 (older form, shows when it happens)."):null]};
 R.bat3=(p)=>{const walks=doc.walk.map((w,i)=>({w,i})).filter(x=>!HIDE||!E.walk(x.w));const n=walks.length;
   return [batH1(p),p.first?T("h2","Battle & Event Frequency by Brief"):null,p.first?T("cap","Count of each combat unit (red) and event (green) per Mission Walkthrough subsection."):null,
@@ -984,18 +988,21 @@ function tokens(text){const out=[];for(const m of String(text||"").matchAll(TOKR
 const unitByNo=no=>doc.battle.units.find(u=>+u.no===+no),eventByNo=no=>doc.battle.events.find(e=>+e.no===+no);
 const enemyName=id=>(doc.battle.enemyTypes.find(t=>t.id===id)||{}).name||"?";
 let BSC=null;
-/** battle-based series: battles set intensity to the unit estimate, events add their delta (an !(e1,20) event then runs for 20 s, decaying like rest), rest/exploration decays; walk time = shortest duration.
+/** battle-based series: battles set intensity to the unit estimate, events add their delta (an !(e1,20) event then runs for 20 s like rest), walk time = shortest duration.
+    Decay is a step: only a full decay period (default 30 s) without a battle or event lowers intensity by the decay amount; a battle's end or an event's start restarts that count.
     times[walk id] holds, per counted token, its start time and whether a timed event runs past the subsection's longest duration */
 function battleSeries(){
-  const B=doc.battle;const rate=(+B.decay.amount||0)/(+B.decay.per||30);
-  let t=0,I=0;const pts=[{t:0,I:0}],bands=[],evs=[],ends=[],times={},freq={};let has=false;
-  const decay=dur=>{if(dur<=0)return;if(rate>0&&I>0&&I-rate*dur<0){pts.push({t:t+I/rate,I:0})}t+=dur;I=Math.max(0,I-rate*dur);pts.push({t,I})};
+  const B=doc.battle;const amt=+B.decay.amount||0,per=+B.decay.per||30;
+  let t=0,I=0,calm=0;const pts=[{t:0,I:0}],bands=[],evs=[],ends=[],times={},freq={};let has=false;  // calm: seconds since the last battle or event
+  const decay=dur=>{if(dur<=0)return;const end=t+dur;
+    while(amt>0&&I>0&&t+per-calm<=end+1e-9){t+=per-calm;calm=0;pts.push({t,I});I=Math.max(0,I-amt);pts.push({t,I})}
+    calm+=end-t;t=end;pts.push({t,I})};
   doc.walk.forEach((w,i)=>{const tk=tokens(countedActs(w.acts));const tm=[];let used=0;const t0=t;const fq=freq[w.id]={};
     const dmin=parseFloat(w.dmin),dmax=parseFloat(w.dmax),limit=!isNaN(dmax)?dmax:dmin;
     for(const k of tk){has=true;let over=false;const ts=t;
-      if(k.k==="b"){const u=unitByNo(k.no);fq["b"+k.no]=(fq["b"+k.no]||0)+k.n;pts.push({t,I});I=u?(+u.intensity||0)*k.n:I;pts.push({t,I});bands.push({t0:t,t1:t+k.dur,no:k.no});t+=k.dur;pts.push({t,I});used+=k.dur}
+      if(k.k==="b"){const u=unitByNo(k.no);fq["b"+k.no]=(fq["b"+k.no]||0)+k.n;pts.push({t,I});I=u?(+u.intensity||0)*k.n:I;pts.push({t,I});bands.push({t0:t,t1:t+k.dur,no:k.no});t+=k.dur;pts.push({t,I});used+=k.dur;calm=0}
       else if(k.k==="r"){decay(k.dur);used+=k.dur}
-      else{const e=eventByNo(k.no);fq["e"+k.no]=(fq["e"+k.no]||0)+k.n;pts.push({t,I});I=Math.max(0,I+(e?(+e.delta||0)*k.n:0));pts.push({t,I});evs.push({t,t1:t+k.dur,no:k.no,I});
+      else{const e=eventByNo(k.no);fq["e"+k.no]=(fq["e"+k.no]||0)+k.n;pts.push({t,I});I=Math.max(0,I+(e?(+e.delta||0)*k.n:0));pts.push({t,I});calm=0;evs.push({t,t1:t+k.dur,no:k.no,I});
         decay(k.dur);used+=k.dur;over=k.dur>0&&!isNaN(limit)&&used>limit}
       tm.push({t:ts,over})}
     times[w.id]=tm;const total=isNaN(dmin)?used:dmin;if(total-used>0)decay(total-used);
@@ -1019,6 +1026,14 @@ function tokFormat(html,wid){let k=0;const tm=(BSC&&BSC.times[wid])||[];
       else{if(at>=0)at-=v.length;out=fmt(v,!!m)}
       const f=document.createElement("template");f.innerHTML=out;t.replaceWith(f.content)}}
   return d.innerHTML}
+/* the intensity line joins its key values (the last value at each moment) with gentle reciprocal curves that bend upwards, like 1/x
+   either side of a peak: a rise starts slowly and climbs steeply into the higher value (u/(1+a(1-u))), a fall drops steeply and then
+   flattens out ((1+a)u/(1+au)). With a=1 half way covers a third of a rise or two thirds of a fall. Stretches that hold one value stay flat. */
+function easedPts(pts,a=1,n=20){const k=[];for(const p of pts){if(k.length&&Math.abs(k[k.length-1].t-p.t)<1e-9)k[k.length-1]=p;else k.push(p)}
+  const key=k.filter((p,i)=>!(i>0&&i<k.length-1&&k[i-1].I===p.I&&k[i+1].I===p.I));
+  const out=key.slice(0,1);for(let i=1;i<key.length;i++){const p=key[i-1],q=key[i];if(p.I===q.I){out.push(q);continue}
+    for(let j=1;j<=n;j++){const u=j/n;out.push({t:p.t+(q.t-p.t)*u,I:p.I+(q.I-p.I)*(q.I>p.I?u/(1+a*(1-u)):(1+a)*u/(1+a*u))})}}
+  return out}
 function battleChartSVG(){
   const S=BSC||battleSeries();const ax=axisTicks(S.has?S.end:600);const yHi=S.has?Math.max(1,...S.pts.map(p=>p.I),...doc.battle.units.map(u=>+u.intensity||0)):10;const yStep=niceNum(yHi/5);
   const svg=SV("svg",{viewBox:"0 0 1600 900",class:"chart","data-x":"g",id:"battleChart",xmlns:SVGNS,"font-family":"JetBrains Mono, Consolas, monospace"});
@@ -1026,7 +1041,7 @@ function battleChartSVG(){
   if(S.has){
     S.bands.forEach(b=>{svg.append(SV("rect",{x:X(b.t0),y:Tp,width:Math.max(2,X(b.t1)-X(b.t0)),height:B-Tp,fill:"#F4CCCC","fill-opacity":.6}),SV("text",{x:(X(b.t0)+X(b.t1))/2,y:Tp+22,"text-anchor":"middle","font-size":18,fill:"#9C2A1F","font-weight":700},"b"+b.no))});
     S.ends.forEach(e=>svg.append(SV("line",{x1:X(e.t),x2:X(e.t),y1:Tp,y2:B,stroke:"#9AA7BD","stroke-width":1.5,"stroke-dasharray":"6 6"}),SV("text",{x:X(e.t)-6,y:B-10,"text-anchor":"end","font-size":16,fill:"#5A6577"},pad(e.i+1,2))));
-    svg.append(SV("polyline",{points:S.pts.map(p=>`${X(p.t)},${Y(p.I)}`).join(" "),fill:"none",stroke:"#C0504D","stroke-width":4,"stroke-linejoin":"round"}));
+    svg.append(SV("polyline",{points:easedPts(S.pts).map(p=>`${X(p.t)},${Y(p.I)}`).join(" "),fill:"none",stroke:"#C0504D","stroke-width":4,"stroke-linejoin":"round"}));
     S.evs.forEach(e=>{if(e.t1>e.t)svg.append(SV("rect",{x:X(e.t),y:Tp,width:Math.max(2,X(e.t1)-X(e.t)),height:B-Tp,fill:"#D9EAD3","fill-opacity":.6}))});
     S.evs.forEach(e=>{const x=X(e.t),y=Y(e.I);svg.append(SV("path",{d:`M${x} ${y-14} L${x+11} ${y+6} L${x-11} ${y+6} Z`,fill:"#38761D"}),SV("text",{x,y:y-22,"text-anchor":"middle","font-size":18,fill:"#38761D","font-weight":700},"e"+e.no))});
   }else svg.append(SV("text",{x:(L+Rr)/2,y:(Tp+B)/2,"text-anchor":"middle","font-size":26,fill:"#8C8C8C"},"[Auto-generated from !(b#,ss) / !(ss) / !(e#) in Mission Walkthrough actions]"));
@@ -1235,7 +1250,11 @@ function chartEditor(id){
 function battleEditor(){
   const B=JSON.parse(JSON.stringify(doc.battle)),types=JSON.parse(JSON.stringify(doc.beats.types));
   const body=h("div",{class:"fcwrap"});
-  const IN=(val,on,o={})=>h("input",{value:val??"",type:o.type||"text",step:o.step||null,placeholder:o.ph||"","aria-label":o.ph||"",style:o.w?`width:${o.w}`:null,oninput:e=>on(e.target.value)});
+  /* number fields are plain text boxes: a number input silently drops full-width characters from a Chinese/Japanese IME (－２, ＋1.5),
+     which looks like the field refuses to change. What is typed is normalised; a half-typed "-" or "+" reads as empty until a digit follows. */
+  const numIn=v=>{const s=String(v).replace(/[０-９．＋－]/g,c=>String.fromCharCode(c.charCodeAt(0)-0xFEE0)).replace(/[−–—]/g,"-").replace(/[。，,]/g,".").replace(/\s+/g,"");return s===""||isNaN(+s)?"":s};
+  const IN=(val,on,o={})=>h("input",{value:val??"",type:"text",inputmode:o.type==="number"?"decimal":null,placeholder:o.ph||"","aria-label":o.ph||"",style:o.w?`width:${o.w}`:null,
+    oninput:e=>on(o.type==="number"?numIn(e.target.value):e.target.value)});
   const X=(f)=>h("button",{class:"btn",title:"Remove",onclick:()=>{f();draw()}},"✕");
   const sec=(t,...k)=>h("section",{class:"stack",style:"gap:6px"},h("h4",{style:"margin:6px 0 0;font-size:12px;color:var(--accent)"},t),...k);
   const nextNo=a=>a.reduce((m,x)=>Math.max(m,+x.no||0),0)+1;
@@ -1253,7 +1272,7 @@ function battleEditor(){
       h("tbody",null,B.events.map((e,i)=>h("tr",null,h("td",{style:"width:44px;font-weight:700;padding-top:9px"},"e"+e.no),h("td",null,IN(e.name,v=>{e.name=v},{ph:"Event name"})),
         h("td",{style:"width:150px"},IN(e.delta,v=>{e.delta=v===""?"":+v},{type:"number",step:"0.5",ph:"+2 / -1"})),h("td",{style:"width:40px"},X(()=>B.events.splice(i,1))))))),
       h("div",null,h("button",{class:"btn",onclick:()=>{B.events.push({id:uid(),no:nextNo(B.events),name:"",delta:""});draw()}},"+ Add event"))));
-    body.append(sec("Defaults",h("div",{class:"inl",style:"flex-wrap:wrap"},"Outside combat, intensity drops by",IN(B.decay.amount,v=>{B.decay.amount=+v||0},{type:"number",step:"0.5",w:"80px",ph:"Amount"}),"every",IN(B.decay.per,v=>{B.decay.per=+v||30},{type:"number",w:"80px",ph:"Seconds"}),"seconds.")));
+    body.append(sec("Defaults",h("div",{class:"inl",style:"flex-wrap:wrap"},"After every",IN(B.decay.per,v=>{B.decay.per=+v||30},{type:"number",w:"80px",ph:"Seconds"}),"seconds without a battle or event, intensity drops by",IN(B.decay.amount,v=>{B.decay.amount=+v||0},{type:"number",w:"80px",ph:"Amount"}),"(a battle or event restarts the count).")));
     body.append(sec("Beats Timeline types",h("p",{class:"hint",style:"margin:0"},"Each Mission Walkthrough subsection picks one of these; it appears in brackets after the Brief and colours the Beats Timeline."),
       h("table",{class:"bt"},h("tbody",null,types.map((t,i)=>h("tr",null,h("td",null,IN(t.name,v=>{t.name=v},{ph:"Type name"})),h("td",{style:"width:40px"},X(()=>types.splice(i,1))))))),
       h("div",null,h("button",{class:"btn",onclick:()=>{types.push({id:uid(),name:""});draw()}},"+ Add type"))));
@@ -1335,7 +1354,8 @@ function flat(d){
   o["#walk"]={idx:"3",label:"Mission Walkthrough",v:d.walk.map(c=>c.id).join(","),kind:"list"};
   d.walk.forEach((w,i)=>{const n="3."+pad(i+1,2),p="walk."+w.id,nm=`${pad(i+1,2)} ${w.brief||"[Brief]"}`;
     A(p+".brief",n,nm+" › Brief",w.brief);A(p+".desc",n,nm+" › Description",w.desc,"r");A(p+".int",n,nm+" › Intensity",w.int);A(p+".dmin",n,nm+" › Duration min",w.dmin);A(p+".dmax",n,nm+" › Duration max",w.dmax);A(p+".acts",n,nm+" › Player actions",w.acts,"r");A(p+".cat",n,nm+" › Type",typeNameIn(d,w.cat));
-    ["Top-down / Overall","Key Highlight","Free Pick A","Free Pick B"].forEach((l,k)=>A(p+".m."+k,n,nm+" › "+l,w.m[k],"i"));["Main Reference","Mood Picture"].forEach((l,k)=>A(p+".r."+k,n,nm+" › "+l,w.r[k],"i"))});
+    ["Top-down / Overall","Key Highlight","Free Pick A","Free Pick B"].forEach((l,k)=>A(p+".m."+k,n,nm+" › "+l,w.m[k],"i"));["Main Reference","Mood Picture"].forEach((l,k)=>A(p+".r."+k,n,nm+" › "+l,w.r[k],"i"));
+    ["Top-down / Overall","Key Highlight","Free Pick A","Free Pick B"].forEach((l,k)=>A(p+".mc."+k,n,nm+" › "+l+" legend",w.mc[k]));["Main Reference","Mood Picture"].forEach((l,k)=>A(p+".rc."+k,n,nm+" › "+l+" legend",w.rc[k]))});
   o["#legends"]={idx:"4",label:"Layout Plan Legends",v:d.legends.items.map(c=>c.id).join(","),kind:"list"};
   d.legends.items.forEach((it,i)=>{const n="4."+(i+1);A("legends.items."+it.id+".name",n,"Legend › Name",it.name);A("legends.items."+it.id+".img",n,`Legend ${it.name||i+1} › Image`,it.img,"i")});
   o["#plans"]={idx:"5",label:"2D Layout Plan",v:d.plans.map(c=>c.id).join(","),kind:"list"};
@@ -1568,14 +1588,14 @@ const HELP=[
   ["Background","Pick what each of the three columns holds; the column set to This Level is printed in red."],
   ["!(b1,45)","In Mission Walkthrough actions: a 45 s battle with combat unit b1, shown as [Battle: name (45s)]."],
   ["!(b1,45)*3","A group of three b1 units fighting together for 45 s: intensity is three times the unit's, it counts 3 in the frequency table, and it shows as [Battle: name ×3 (45s)]. Works on events too: !(e1,20)*2 doubles the delta."],
-  ["!(30)","A 30 s rest; intensity decays during it, shown as [Rest: 30s]."],
+  ["!(30)","A 30 s rest, shown as [Rest: 30s]; it counts towards the decay period."],
   ["!(e1,20)","Event e1 lasting 20 s, shown as [Event: name (20s)]; its time counts towards the subsection, and [Exceeded Event Time] marks one that runs past the subsection's longest duration."],
   ["!(e1)","Older form: event e1, shown as [Event: name (time it happens)]. While editing it carries an [Outdated] note, which is never exported."],
   ["? action","An action starting with ? (after its number) is optional: shown as a grey [Option] and left out of every statistic."],
   ["PO camera","+ Camera on a PO entry stores the level file, Location and Rotation; paste both from Unreal at once. Click Loc or Rot to copy it for pasting into Unreal."],
   ["Characters","Three to a row; a second row shares the page while it fits, otherwise it starts a new page."],
-  ["Battle intensity","A battle sets intensity to its unit's estimate, events add their change, other time decays it (default -2 every 30 s)."],
-  ["Battle time","Each subsection uses its shortest duration; time not covered by battles or rests counts as exploration and decays."],
+  ["Battle intensity","A battle sets intensity to its unit's estimate, events add their change, and each full period without either lowers it (default -2 per 30 s; a battle or event restarts the count)."],
+  ["Battle time","Each subsection uses its shortest duration; time not covered by battles or rests counts as exploration and counts towards the decay period."],
   ["Beats Chart (Time Based)","Adds each subsection's Intensity +/- over its min and max durations; the time axis has 5 to 20 divisions."],
   ["Beats Timeline","Generated from Brief, type and shortest duration, or replaced by an image; types are edited in Battle data."],
   ["Flow charts","One Start/End pair per chart (add a chart for more); click a chart to edit nodes, or switch it to an image."],
@@ -1655,7 +1675,7 @@ async function migrate(d){
       n.committed[`ctx.bg.${i}.kind`]={idx:"2.1",label:`Background › Column ${i+1} content`,v:BGK[k].t,kind:"t"};n.committed[`ctx.bg.${i}.text`]={idx:"2.1",label:`Background › Column ${i+1} text`,v:old?old.v:"",kind:"r"}})}}
   if(!n.flow.charts){const old=d.flow||{};const c=newChart("Main Flow");if(old.img){c.mode="image";c.img=old.img}n.flow={mode:old.mode||"both",charts:[c],guide:(old.cols||[]).map(x=>({id:uid(),text:x.text||"",img:x.img||""}))}}
   n.beats=Object.assign(newDoc().beats,d.beats||{});n.battle=Object.assign(newDoc().battle,d.battle||{});
-  n.walk.forEach(w=>{if(w.cat==null)w.cat=""});
+  n.walk.forEach(w=>{if(w.cat==null)w.cat="";w.mc=w.mc||["","","",""];w.rc=w.rc||["",""]});
   if(n.committed&&(d.schema||1)<3){const cur=flat(n);for(const k of Object.keys(n.committed))if(k.startsWith("flow."))delete n.committed[k];
     for(const [k,v] of Object.entries(cur))if(/^(flow\.|#charts|#guide|beats\.|battle\.|#units|#events)/.test(k)||k.endsWith(".cat"))n.committed[k]=v}
   const x0=newDoc().appx,xd=d.appx||{};n.appx={pre:Object.assign(x0.pre,xd.pre||{}),spec:xd.spec||x0.spec,guide:xd.guide||x0.guide};
@@ -1849,6 +1869,16 @@ async function exportPptx(){
 /* ---- PDF: page captured without pictures, then original-resolution pictures placed on top ---- */
 /* html2canvas does not draw the hyphens the browser adds when it splits a word at a line end, so they are written into the text
    where the browser broke each word; the line widths stay the same and automatic hyphenation is switched off for the capture */
+/* html2canvas paints the background of an inline tag that wraps over the text in front of it, so before capture each wrapped tag
+   becomes one inline-block piece per line, cut where the browser broke it; the layout stays the same */
+function bakeToks(root){const rg=document.createRange();
+  for(const el of $$(".tok",root)){if(el.getClientRects().length<2||el.childNodes.length!==1||el.firstChild.nodeType!==3)continue;
+    const nd=el.firstChild,txt=nd.data,cuts=[0];rg.setStart(nd,0);rg.setEnd(nd,1);let top=rg.getBoundingClientRect().top;
+    for(let i=1;i<txt.length;i++){rg.setStart(nd,i);rg.setEnd(nd,i+1);const r=rg.getBoundingClientRect();if(r.width&&r.top>top+2){cuts.push(i);top=r.top}}
+    if(cuts.length<2)continue;cuts.push(txt.length);const frag=document.createDocumentFragment();
+    for(let k=0;k<cuts.length-1;k++){const piece=txt.slice(cuts[k],cuts[k+1]),body=piece.replace(/\s+$/,"");
+      frag.append(h("span",{class:el.className,style:"display:inline-block"},body));if(body.length<piece.length)frag.append(" ")}
+    el.replaceWith(frag)}}
 function bakeHyphens(root){for(const el of $$(".jus",root)){const cuts=[],rg=document.createRange(),tw=document.createTreeWalker(el,NodeFilter.SHOW_TEXT);
   for(let nd;(nd=tw.nextNode());)for(const m of nd.data.matchAll(/[A-Za-z\u00C0-\u024F\u00AD]{4,}/g)){rg.setStart(nd,m.index);rg.setEnd(nd,m.index+m[0].length);const rs=rg.getClientRects();
     if(rs.length<2||Math.abs(rs[rs.length-1].top-rs[0].top)<2)continue;const t0=rs[0].top;
@@ -1863,7 +1893,7 @@ async function exportPdf(){
   for(const [i,pg] of pagesEls.entries()){busyT(`PDF: page ${i+1} of ${pagesEls.length}`);
     const pics=$$(".slot[data-img],.slot[data-src],svg[data-x=g]",pg);const placed=[];for(const el of pics){const im=await imgFor(el);if(im)placed.push({r:rel(el,pg),im,id:el.dataset.img})}
     if(i===0)$$(".tl[data-p]",pg).forEach(el=>{const r=rel(el,pg);links.push({r,p:+el.dataset.p})});
-    bakeHyphens(pg);st.classList.add("pdfcap");const cv=await html2canvas(pg,{scale:4,backgroundColor:"#ffffff",useCORS:true,logging:false});st.classList.remove("pdfcap");
+    bakeToks(pg);bakeHyphens(pg);st.classList.add("pdfcap");const cv=await html2canvas(pg,{scale:4,backgroundColor:"#ffffff",useCORS:true,logging:false});st.classList.remove("pdfcap");
     if(i>0)pdf.addPage("a4","landscape");pdf.addImage(cv.toDataURL("image/jpeg",.92),"JPEG",0,0,297,210);
     for(const {r,im,id} of placed){const fmt=im.type==="image/png"?"PNG":"JPEG";pdf.addImage(new Uint8Array(await im.blob.arrayBuffer()),fmt,(r.x+im.place.x)*MM,(r.y+im.place.y)*MM,im.place.w*MM,im.place.h*MM,undefined,fmt==="PNG"?"FAST":"NONE")}
   }
