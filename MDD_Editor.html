@@ -182,6 +182,7 @@ span.f{display:inline;min-height:0}
 .tokr{background:#EDEDED;color:#595959}
 .tokopt{color:#8C8C8C}
 .tokx{background:#FFE699;color:#C00000;font-weight:700}
+.tokp{background:#DDEBF7;color:#1F4E79}
 .tokold{color:#A8560C;border:.5pt dashed #A8560C}
 .camv{cursor:copy;border-radius:.6mm}
 #pages.edit .camv{border-bottom:.5pt dotted #9AA7BD}
@@ -446,7 +447,7 @@ function richParas(root){
     const g={...f},T=c.tagName;
     if(T==="B"||T==="STRONG"||c.classList.contains("lbl"))g.b=true;
     if(T==="I"||T==="EM")g.i=true;if(T==="U")g.u=true;
-    if(c.classList.contains("red")||T==="FONT")g.c="C00000";else if(c.classList.contains("tokb"))g.c="9C2A1F";else if(c.classList.contains("toke"))g.c="38761D";else if(c.classList.contains("tokr"))g.c="595959";else if(c.classList.contains("tokopt"))g.c="8C8C8C";else if(c.classList.contains("tokx")){g.c="C00000";g.b=true}
+    if(c.classList.contains("red")||T==="FONT")g.c="C00000";else if(c.classList.contains("tokb"))g.c="9C2A1F";else if(c.classList.contains("toke"))g.c="38761D";else if(c.classList.contains("tokr"))g.c="595959";else if(c.classList.contains("tokp"))g.c="1F4E79";else if(c.classList.contains("tokopt"))g.c="8C8C8C";else if(c.classList.contains("tokx")){g.c="C00000";g.b=true}
     if(!g.c&&c.classList.contains("ph")&&g.c!=="C00000")g.c="8C8C8C";
     if(T==="BR"){if(BLK.has(node.tagName)&&!c.nextSibling)continue;nl();continue}
     if(T==="UL"||T==="OL"){lst(c,g);continue}
@@ -509,7 +510,8 @@ function F(path,ph,o={}){
   const at={class:"f"+(o.rich?" rich":"")+(o.red?" phred":"")+(o.cls?" "+o.cls:""),"data-path":path};
   if(!o.inline){at["data-x"]="t";at["data-s"]=o.s||"body"}
   const el=h(tag,at);
-  const disp=o.tok?tokFormat(v,o.wid):v;if(o.tok){el.dataset.tok="1";el.dataset.wid=o.wid}
+  let disp=o.tok?tokFormat(v,o.wid):v;if(o.tok){el.dataset.tok="1";el.dataset.wid=o.wid}
+  if(o.paths){disp=pathFmt(disp);el.dataset.paths="1"}
   if(isEdit()){el.contentEditable="true";el.dataset.ph=ph;el.spellcheck=true;if(o.rich)el.innerHTML=disp;else el.textContent=v}
   else if(filled(v,o.rich)){if(o.rich)el.innerHTML=disp;else el.textContent=o.show?o.show(v):v}
   else el.append(h("span",{class:"ph"+(o.red?" red":"")},ph));
@@ -731,12 +733,18 @@ const BR_PATH=/^\s*##\s*(\d+)\s*/,BR_MERGE=/^\s*[{｛]\s*(\d+(?:\s*[,，、]\s*\
 function walkNums(list=doc.walk){let top=0,base=0;const open=new Map();
   return list.map(w=>{const b=w.brief||"";let m;
     if((m=b.match(BR_PATH))){const p=Math.max(1,+m[1]);const n=(open.has(p)?open.get(p).n:base)+1;top=Math.max(top,n);
-      const no=pad(n,2)+(p<=26?String.fromCharCode(96+p):"_"+p);open.set(p,{n,no});return {no,brief:b.slice(m[0].length),from:null}}
+      const no=pad(n,2)+pathLetter(p);open.set(p,{n,no});return {no,brief:b.slice(m[0].length),from:null}}
     const n=++top;let from=null;
     if((m=b.match(BR_MERGE))){const ps=m[1].split(/[,，、]/).map(x=>Math.max(1,+x));
       from=ps.map(p=>open.get(p)).filter(Boolean).sort((x,y)=>x.n-y.n||(x.no<y.no?-1:1)).map(x=>x.no);ps.forEach(p=>open.delete(p));
       base=n;return {no:pad(n,2),brief:b.slice(m[0].length),from:from.length?from:null}}
     open.clear();base=n;return {no:pad(n,2),brief:b,from:null}})}
+const pathLetter=p=>p>=1&&p<=26?String.fromCharCode(96+p):"_"+p;
+/** ##n written in walkthrough text becomes a shaded [Along Path A] tag (display only; the stored text keeps ##n) */
+function pathFmt(html){if(!/##\s*\d/.test(html||""))return html;const d=actsDOM(html),tw=document.createTreeWalker(d,NodeFilter.SHOW_TEXT),ns=[];
+  for(let n;(n=tw.nextNode());)if(/##\s*\d/.test(n.nodeValue))ns.push(n);
+  for(const n of ns){const t=document.createElement("template");t.innerHTML=esc(n.nodeValue).replace(/##\s*(\d+)/g,(m,p)=>`<span class="tok tokp">[Along Path ${pathLetter(+p).toUpperCase()}]</span>`);n.replaceWith(t.content)}
+  return d.innerHTML}
 const walkNo=i=>{const r=walkNums()[i];return r?r.no:pad(i+1,2)};
 function walkTotals(){let a=0,b=0,ok=false;for(const w of doc.walk){const x=parseFloat(w.dmin),y=parseFloat(w.dmax);if(!isNaN(x)){a+=x;ok=true}if(!isNaN(y)){b+=y;ok=true}else if(!isNaN(x))b+=x}return ok?`${Math.round(a)}-${Math.round(b)}s`:null}
 R.walk=(p)=>{const out=[];const halves=[];const tot=walkTotals();const cnt=HIDE?doc.walk.filter(w=>!E.walk(w)).length:doc.walk.length;
@@ -756,9 +764,9 @@ R.walk=(p)=>{const out=[];const halves=[];const tot=walkTotals();const cnt=HIDE?
       const c=F(`${b}.${g}c.${k}`,"[Legend]",{s:"cap"})||T("cap"," ");c.style.textAlign="center";return COL(im,c)};
     // up to five picture rows, each two middle pictures and one reference; 0 rows lets the text take the full width
     const mid=nn(WROW.slice(0,nr).flatMap(([a,c])=>[fig("m",a,WMID[a]),fig("m",c,WMID[c])]));
-    const text=COL(F(b+".desc","[Detailed description: what happens, what the player learns, how the space supports it]",{rich:true}),
+    const text=COL(F(b+".desc","[Detailed description: what happens, what the player learns, how the space supports it]",{rich:true,paths:true}),
         LR(it?T("body",[L1("Intensity: "),it]):null,(d1||d2)?T("body",[L1("Duration: "),d1,d1&&d2?"-":null,d2,HIDE?"s":null],{class:"r"}):null),
-        F(b+".acts","[1. Main player action  2. Next action  (optional exploration in brackets)  3. ...  Battle !(b1,45)  Group !(b1,45)*3  Rest !(30)  Event !(e1,20)  Optional: start with ?]",{rich:true,tok:true,wid:w.id}));
+        F(b+".acts","[1. Main player action  2. Next action  (optional exploration in brackets)  3. ...  Battle !(b1,45)  Group !(b1,45)*3  Rest !(30)  Event !(e1,20)  Optional: start with ?]",{rich:true,tok:true,paths:true,wid:w.id}));
     const ref=nn(WREF.slice(0,nr).map((l,k)=>fig("r",k,l)));
     out.push(!nr?ROW("1fr",text):HIDE&&(mid.length<2*nr||ref.length<nr)?walkMixed(text,[...mid,...ref]):ROW("3fr 2fr 1fr",text,mid.length?GRID(2,mid):COL(),COL(...ref)));
   });
@@ -1465,14 +1473,14 @@ pages.addEventListener("input",e=>{const f=e.target.closest(".f[data-path]");if(
 const walkSig=()=>walkNums().map(r=>r.no+(r.from||"")).join("|");let walkSig0=null;
 pages.addEventListener("focusin",e=>{const f=e.target.closest&&e.target.closest('.f[data-path^="walk."][data-path$=".brief"]');if(f)walkSig0=walkSig()});
 pages.addEventListener("focusout",e=>{const f=e.target.closest('.f[data-path^="walk."][data-path$=".brief"]');if(f&&walkSig0!==null&&walkSig()!==walkSig0){walkSig0=null;setTimeout(render)}});
-pages.addEventListener("focusout",e=>{const f=e.target.closest(".f.rich[data-path]");if(!f)return;const s=sanitize(f.innerHTML);setP(doc,f.dataset.path,plain(s)?s:"");if(!plain(s))f.innerHTML="";else if(f.dataset.tok){BSC=battleSeries();f.innerHTML=tokFormat(s,f.dataset.wid)}delete f.dataset.raw;hideRtb();autosave()});
+pages.addEventListener("focusout",e=>{const f=e.target.closest(".f.rich[data-path]");if(!f)return;const s=sanitize(f.innerHTML);setP(doc,f.dataset.path,plain(s)?s:"");if(!plain(s))f.innerHTML="";else if(f.dataset.tok||f.dataset.paths){if(f.dataset.tok)BSC=battleSeries();f.innerHTML=(f.dataset.paths?pathFmt:x=>x)(f.dataset.tok?tokFormat(s,f.dataset.wid):s)}delete f.dataset.raw;hideRtb();autosave()});
 pages.addEventListener("keydown",e=>{const f=e.target.closest(".f[data-path]");if(f&&!f.classList.contains("rich")&&e.key==="Enter"){e.preventDefault();f.blur()}});
 pages.addEventListener("paste",e=>{
   const slot=e.target.closest&&e.target.closest(".slot[data-path]");
   const items=[...(e.clipboardData&&e.clipboardData.items||[])];const imgItem=items.find(i=>i.type.startsWith("image/"));
   if(slot&&imgItem&&!slot.closest(".locked")){e.preventDefault();setImage(slot.dataset.path,imgItem.getAsFile());return}
   const f=e.target.closest&&e.target.closest(".f[data-path]");if(f){e.preventDefault();const t=e.clipboardData.getData("text/plain");document.execCommand("insertText",false,t)}});
-pages.addEventListener("focusin",e=>{const f=e.target.closest(".f.rich[data-path]");if(f&&f.dataset.tok&&!f.dataset.raw){f.dataset.raw="1";f.innerHTML=getP(doc,f.dataset.path)||""}if(f&&f.classList.contains("autolist")&&!plain(f.innerHTML))document.execCommand("insertUnorderedList");if(f)showRtb(f);else hideRtb()});
+pages.addEventListener("focusin",e=>{const f=e.target.closest(".f.rich[data-path]");if(f&&(f.dataset.tok||f.dataset.paths)&&!f.dataset.raw){f.dataset.raw="1";f.innerHTML=getP(doc,f.dataset.path)||""}if(f&&f.classList.contains("autolist")&&!plain(f.innerHTML))document.execCommand("insertUnorderedList");if(f)showRtb(f);else hideRtb()});
 let pickPath=null;
 pages.addEventListener("click",e=>{
   const cv=e.target.closest(".camv[data-copy]");if(cv){e.preventDefault();copyText(cv.dataset.copy).then(ok=>toast(ok?"Copied "+cv.dataset.copy:"Could not copy to the clipboard"));return}
@@ -1655,6 +1663,7 @@ const HELP=[
   ["? action","An action starting with ? (after its number) is optional: shown as a grey [Option] and left out of every statistic."],
   ["##1 Brief","A Walkthrough Brief starting with ##1, ##2… is a step on path 1, 2…: after 06 it is numbered 07a, 07b, and each path counts on by itself (08a…). Only the title after the prefix is printed."],
   ["{1,2} Brief","Merges paths 1 and 2: the step takes the next free number and lists where each path ended, e.g. 09 - Title (07b,08a). Later ##n briefs branch again from there (12a, 12b). A plain brief closes any open paths."],
+  ["##1 in text","In a Walkthrough description or action list, ##1, ##2… shows as a shaded [Along Path A], [Along Path B]… tag."],
   ["Lists","In any text box, Tab / Shift+Tab (or → / ← on the format bar) indents a list item one level or back; lists go two levels deep."],
   ["PO camera","+ Camera on a PO entry stores the level file, Location and Rotation; paste both from Unreal at once. Click Loc or Rot to copy it for pasting into Unreal."],
   ["Characters","Three to a row; a second row shares the page while it fits, otherwise it starts a new page."],
