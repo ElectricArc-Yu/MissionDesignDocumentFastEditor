@@ -601,9 +601,10 @@ function layout(){
   if(fm!=="chart"){const gi=doc.flow.guide.filter(g=>!HIDE||!E.guide(g));const gc=chunk(gi,6);if(!gc.length&&!HIDE)gc.push([]);
     gc.forEach((g,i)=>{n=add({t:"guide",sec:SEC.flow,items:g,first:ff,gfirst:i===0,last:i===gc.length-1});flowH();if(i===0)toc.push({l:2,num:"6."+(charts.length+1),t:"Exploration Guidance",p:n})})}
   const tlHas=doc.beats.tlMode==="image"?hasI(doc.beats.timeline):timelineData().has;
-  const b1=!HIDE||chartData().has,b2=!HIDE||BSC.has,b3=!HIDE||tlHas;let bf=true;const beatH=()=>{if(bf)toc.push({l:1,num:"7",t:"Beats",p:n});const f=bf;bf=false;return f};
-  if(b1){n=add({t:"beats1",sec:SEC.beats,h1:bf});beatH()}
-  if(b2){n=add({t:"beatsB",sec:SEC.beats,h1:bf});beatH()}
+  // a split walkthrough gets one time chart and one battle chart per path
+  const rts=walkRoutes();const b1=!HIDE||rts.some(r=>chartData(r.idx).has),b2=!HIDE||BSC.has,b3=!HIDE||tlHas;let bf=true;const beatH=()=>{if(bf)toc.push({l:1,num:"7",t:"Beats",p:n});const f=bf;bf=false;return f};
+  if(b1)rts.forEach((route,rk)=>{n=add({t:"beats1",sec:SEC.beats,h1:bf,route,rk});beatH()});
+  if(b2)rts.forEach((route,rk)=>{n=add({t:"beatsB",sec:SEC.beats,h1:bf,route,rk});beatH()});
   if(b3){n=add({t:"beats2",sec:SEC.beats,h1:bf});beatH()}
   const B=doc.battle;let tf=true;const batH=()=>{if(tf)toc.push({l:1,num:"8",t:"Battle Intensity",p:n});const f=tf;tf=false;return f};
   if(!HIDE||B.units.length){const uc=chunk(B.units,14);if(!uc.length)uc.push([]);uc.forEach((rows,i)=>{n=add({t:"bat1",sec:SEC.bat,rows,first:i===0,h1:tf});batH()})}
@@ -728,17 +729,26 @@ function walkMixed(text,imgs){const n=imgs.length;if(!n)return ROW("1fr",text);
   return ROW(cols,text,blk)}
 /* Brief prefixes route the walkthrough: "##1 Title" is a step on path 1 (rendered 07a), "##2" path 2 (07b) and so on;
    "{1,2} Title" merges those paths, taking the next free number and naming the last step of each merged path: 09 - Title (07b,08a).
-   A plain brief while paths are open closes them all. Returns per subsection {no, brief (prefix stripped), from:[labels]}. */
+   A plain brief while paths are open closes them all. Returns per subsection {no, brief (prefix stripped), from:[labels]},
+   plus p and sp (path number and split id) on a path step, and joins (the open paths it closes) on any other step. */
 const BR_PATH=/^\s*##\s*(\d+)\s*/,BR_MERGE=/^\s*[{｛]\s*(\d+(?:\s*[,，、]\s*\d+)*)\s*[}｝]\s*/;
-function walkNums(list=doc.walk){let top=0,base=0;const open=new Map();
+function walkNums(list=doc.walk){let top=0,base=0,sp=0;const open=new Map();
   return list.map(w=>{const b=w.brief||"";let m;
-    if((m=b.match(BR_PATH))){const p=Math.max(1,+m[1]);const n=(open.has(p)?open.get(p).n:base)+1;top=Math.max(top,n);
-      const no=pad(n,2)+pathLetter(p);open.set(p,{n,no});return {no,brief:b.slice(m[0].length),from:null}}
+    if((m=b.match(BR_PATH))){const p=Math.max(1,+m[1]);if(!open.size)sp++;const n=(open.has(p)?open.get(p).n:base)+1;top=Math.max(top,n);
+      const no=pad(n,2)+pathLetter(p);open.set(p,{n,no});return {no,brief:b.slice(m[0].length),from:null,p,sp}}
     const n=++top;let from=null;
     if((m=b.match(BR_MERGE))){const ps=m[1].split(/[,，、]/).map(x=>Math.max(1,+x));
-      from=ps.map(p=>open.get(p)).filter(Boolean).sort((x,y)=>x.n-y.n||(x.no<y.no?-1:1)).map(x=>x.no);ps.forEach(p=>open.delete(p));
-      base=n;return {no:pad(n,2),brief:b.slice(m[0].length),from:from.length?from:null}}
-    open.clear();base=n;return {no:pad(n,2),brief:b,from:null}})}
+      const joins=ps.filter(p=>open.has(p));
+      from=joins.map(p=>open.get(p)).sort((x,y)=>x.n-y.n||(x.no<y.no?-1:1)).map(x=>x.no);ps.forEach(p=>open.delete(p));
+      base=n;return {no:pad(n,2),brief:b.slice(m[0].length),from:from.length?from:null,joins}}
+    const joins=[...open.keys()];open.clear();base=n;return {no:pad(n,2),brief:b,from:null,joins}})}
+/** one route per path number when the walkthrough splits: path p's steps, or at a split without path p its lowest path, plus every shared step.
+    No split (or a single path number): one route over every subsection. */
+function walkRoutes(){const N=walkNums(),all=N.map((_,i)=>i);const ps=[...new Set(N.filter(r=>r.p).map(r=>r.p))].sort((a,b)=>a-b);
+  if(ps.length<2)return [{p:null,idx:all}];
+  const sp={};N.forEach(r=>{if(r.p)(sp[r.sp]||(sp[r.sp]=new Set())).add(r.p)});
+  return ps.map(p=>({p,idx:all.filter(i=>{const r=N[i];if(!r.p)return true;const s=sp[r.sp];return r.p===(s.has(p)?p:Math.min(...s))})}))}
+const routeName=p=>p?"Path "+pathLetter(p).toUpperCase():"";
 const pathLetter=p=>p>=1&&p<=26?String.fromCharCode(96+p):"_"+p;
 /** ##n written in walkthrough text becomes a shaded [Along Path A] tag (display only; the stored text keeps ##n) */
 function pathFmt(html){if(!/##\s*\d/.test(html||""))return html;const d=actsDOM(html),tw=document.createTreeWalker(d,NodeFilter.SHOW_TEXT),ns=[];
@@ -791,9 +801,10 @@ R.chart=(p)=>{const c=p.chart,b="flow.charts."+c.id;const nm=F(b+".name","[Flow 
 R.guide=(p)=>[flowH1(p),p.gfirst?T("h2","Exploration Guidance"):null,
   p.items.length?SPLIT(...chunk(p.items,3).map(row=>[GRID(3,row.map(g=>{const b="flow.guide."+g.id;return COL(isEdit()?h("div",null,ICTL(["guide-up","←",g.id],["guide-down","→",g.id],["guide-rm","Remove",g.id])):null,I(b+".img","Guidance Image","16/9","contain"),F(b+".text","[Breadcrumbs, landmarks, lighting and sight-lines guiding the player]",{rich:true}))}))])):null,
   (isEdit()&&p.last)?h("div",{class:"addbar"},h("button",{"data-act":"guide-add"},"+ Add guidance item")):null];
-R.beats1=(p)=>[p.h1?T("h1","Beats"):null,T("h2","Beats Chart (Time Based)"),chartSVG()];
-R.beatsB=(p)=>[p.h1?T("h1","Beats"):null,T("h2","Beats Chart (Battle Based)"),
-  T("cap",`Shortest durations. Intensity is a running total: a battle adds its combat unit estimate, an event adds its change, and every full ${doc.battle.decay.per}s without a battle or event drops it by ${doc.battle.decay.amount}.`),battleChartSVG()];
+const rtTitle=r=>r&&r.p?" - "+routeName(r.p):"";
+R.beats1=(p)=>[p.h1?T("h1","Beats"):null,T("h2","Beats Chart (Time Based)"+rtTitle(p.route)),chartSVG(p.route,p.rk)];
+R.beatsB=(p)=>[p.h1?T("h1","Beats"):null,T("h2","Beats Chart (Battle Based)"+rtTitle(p.route)),
+  T("cap",`Shortest durations. Intensity is a running total: a battle adds its combat unit estimate, an event adds its change, and every full ${doc.battle.decay.per}s without a battle or event drops it by ${doc.battle.decay.amount}.`),battleChartSVG(p.rk)];
 function tlModeCtl(){if(!isEdit())return null;return h("select",{class:"ctl","data-act":"tl-mode","aria-label":"Timeline source",style:"font:inherit;font-size:7.5pt;margin-left:4mm"},
   [["auto","Generate from Brief, type and time"],["image","Use an image"]].map(([v,t])=>h("option",{value:v,selected:doc.beats.tlMode===v},t)))}
 R.beats2=(p)=>[p.h1?T("h1","Beats"):null,h("div",{"data-x":"t","data-s":"h2"},"Beats Timeline",tlModeCtl()),
@@ -994,14 +1005,15 @@ const lvl=()=>doc.meta.level||(HIDE?"":"[Level Name]");
 const legendItem=(svg,x,label,draw)=>{draw(x);svg.append(SV("text",{x:x+60,y:48,"font-size":22,fill:"#404040"},label));return x+60+label.length*13.5+30};
 
 /* time-based beats chart (min / max durations) */
-function chartData(){const pts=[{n:0,a:0,b:0,I:0}];let a=0,b=0,I=0,has=false;
-  doc.walk.forEach((w,i)=>{const dmin=parseFloat(w.dmin),dmax=parseFloat(w.dmax),di=parseFloat(String(w.int).replace(/\s/g,""));if(isNaN(dmin)&&isNaN(dmax)&&isNaN(di))return;has=true;
+function chartData(idx=doc.walk.map((_,i)=>i)){const pts=[{n:0,a:0,b:0,I:0}];let a=0,b=0,I=0,has=false;
+  idx.forEach(i=>{const w=doc.walk[i];const dmin=parseFloat(w.dmin),dmax=parseFloat(w.dmax),di=parseFloat(String(w.int).replace(/\s/g,""));if(isNaN(dmin)&&isNaN(dmax)&&isNaN(di))return;has=true;
     a+=isNaN(dmin)?(isNaN(dmax)?0:dmax):dmin;b+=isNaN(dmax)?(isNaN(dmin)?0:dmin):dmax;I+=isNaN(di)?0:di;pts.push({n:i,a,b,I})});return {pts,has}}
-function chartSVG(){
-  const {pts,has}=chartData();const ax=axisTicks(has?Math.max(...pts.map(p=>p.b)):960);
+/** route: {p, idx} from walkRoutes(); one chart per route when the walkthrough splits */
+function chartSVG(route=walkRoutes()[0],k=0){
+  const {pts,has}=chartData(route.idx);const ax=axisTicks(has?Math.max(...pts.map(p=>p.b)):960);
   const yLo=has?Math.min(0,...pts.map(p=>p.I)):0,yHiRaw=has?Math.max(1,...pts.map(p=>p.I)):10;const yStep=niceNum((yHiRaw-yLo)/5);
-  const svg=SV("svg",{viewBox:"0 0 1600 900",class:"chart","data-x":"g",id:"beatChart",xmlns:SVGNS,"font-family":"JetBrains Mono, Consolas, monospace"});
-  const {X,Y,L,Rr,Tp,B}=chartFrame(svg,{xMax:ax.max,xStep:ax.step,xN:ax.n,yMin:Math.floor(yLo/yStep)*yStep,yMax:Math.ceil(yHiRaw/yStep)*yStep,yStep,title:`${lvl()}${lvl()?" - ":""}Intensity over time`});
+  const svg=SV("svg",{viewBox:"0 0 1600 900",class:"chart","data-x":"g",id:"beatChart"+(k?"-"+k:""),"data-route":k,xmlns:SVGNS,"font-family":"JetBrains Mono, Consolas, monospace"});
+  const {X,Y,L,Rr,Tp,B}=chartFrame(svg,{xMax:ax.max,xStep:ax.step,xN:ax.n,yMin:Math.floor(yLo/yStep)*yStep,yMax:Math.ceil(yHiRaw/yStep)*yStep,yStep,title:`${lvl()}${lvl()?" - ":""}Intensity over time${route.p?" - "+routeName(route.p):""}`});
   if(has){svg.append(SV("polyline",{points:pts.map(p=>`${X(p.b)},${Y(p.I)}`).join(" "),fill:"none",stroke:"#ED7D31","stroke-width":4,"stroke-dasharray":"14 10"}));
     svg.append(SV("polyline",{points:pts.map(p=>`${X(p.a)},${Y(p.I)}`).join(" "),fill:"none",stroke:"#2F5496","stroke-width":5}));
     pts.slice(1).forEach(p=>svg.append(SV("circle",{cx:X(p.a),cy:Y(p.I),r:7,fill:"#2F5496"}),SV("text",{x:X(p.a),y:Y(p.I)-16,"text-anchor":"middle","font-size":20,fill:"#1F3864"},walkNo(p.n))))}
@@ -1032,13 +1044,18 @@ let BSC=null;
 /** battle-based series: intensity is a running total; battles add their unit estimate, events add their delta (an !(e1,20) event then runs for 20 s like rest), walk time = shortest duration.
     Decay is a step: only a full decay period (default 30 s) without a battle or event lowers intensity by the decay amount; a battle's end or an event's start restarts that count.
     times[walk id] holds, per counted token, its start time and whether a timed event runs past the subsection's longest duration */
-function battleSeries(){
+/** one series per route; the first route's fields stay on top, times[] comes from the first route that runs a subsection */
+function battleSeries(){const R=walkRoutes(),ss=R.map(r=>seriesFor(r.idx));const out={...ss[0],times:{},has:ss.some(x=>x.has),routes:R.map((r,k)=>({...r,S:ss[k]}))};
+  for(const x of ss)for(const id in x.times)if(!(id in out.times))out.times[id]=x.times[id];
+  for(const x of ss.slice(1)){Object.assign(out.freq,x.freq);Object.assign(out.rest,x.rest)}
+  return out}
+function seriesFor(idx){
   const B=doc.battle;const amt=+B.decay.amount||0,per=+B.decay.per||30;
   let t=0,I=0,calm=0;const pts=[{t:0,I:0}],bands=[],evs=[],ends=[],times={},freq={},rest={};let has=false;  // calm: seconds since the last battle or event
   const decay=dur=>{if(dur<=0)return;const end=t+dur;
     while(amt>0&&I>0&&t+per-calm<=end+1e-9){t+=per-calm;calm=0;pts.push({t,I});I=Math.max(0,I-amt);pts.push({t,I})}
     calm+=end-t;t=end;pts.push({t,I})};
-  doc.walk.forEach((w,i)=>{const tk=tokens(countedActs(w.acts));const tm=[];let used=0;const t0=t;const fq=freq[w.id]={};
+  idx.forEach(i=>{const w=doc.walk[i];const tk=tokens(countedActs(w.acts));const tm=[];let used=0;const t0=t;const fq=freq[w.id]={};
     const dmin=parseFloat(w.dmin),dmax=parseFloat(w.dmax),limit=!isNaN(dmax)?dmax:dmin;
     /* the frequency table and the rest range count every use, optional lines included. Rest: the longest and shortest !(ss) rest;
        with none, the longest / shortest duration minus the time of all battles and events */
@@ -1083,10 +1100,10 @@ function easedPts(pts,a=1,n=20){const k=[];
   const out=key.slice(0,1);for(let i=1;i<key.length;i++){const p=key[i-1],q=key[i];if(p.I===q.I){out.push(q);continue}
     for(let j=1;j<=n;j++){const u=j/n;out.push({t:p.t+(q.t-p.t)*u,I:p.I+(q.I-p.I)*(q.I>p.I?u/(1+a*(1-u)):(1+a)*u/(1+a*u))})}}
   return out}
-function battleChartSVG(){
-  const S=BSC||battleSeries();const ax=axisTicks(S.has?S.end:600);const yHi=S.has?Math.max(1,...S.pts.map(p=>p.I),...doc.battle.units.map(u=>+u.intensity||0)):10;const yStep=niceNum(yHi/5);
-  const svg=SV("svg",{viewBox:"0 0 1600 900",class:"chart","data-x":"g",id:"battleChart",xmlns:SVGNS,"font-family":"JetBrains Mono, Consolas, monospace"});
-  const {X,Y,L,Rr,Tp,B}=chartFrame(svg,{xMax:ax.max,xStep:ax.step,xN:ax.n,yMin:0,yMax:Math.ceil(yHi/yStep)*yStep,yStep,title:`${lvl()}${lvl()?" - ":""}Battle intensity`});
+function battleChartSVG(k=0){
+  const A=BSC||battleSeries(),rt=A.routes[k]||A.routes[0],S=rt.S;const ax=axisTicks(S.has?S.end:600);const yHi=S.has?Math.max(1,...S.pts.map(p=>p.I),...doc.battle.units.map(u=>+u.intensity||0)):10;const yStep=niceNum(yHi/5);
+  const svg=SV("svg",{viewBox:"0 0 1600 900",class:"chart","data-x":"g",id:"battleChart"+(k?"-"+k:""),"data-route":k,xmlns:SVGNS,"font-family":"JetBrains Mono, Consolas, monospace"});
+  const {X,Y,L,Rr,Tp,B}=chartFrame(svg,{xMax:ax.max,xStep:ax.step,xN:ax.n,yMin:0,yMax:Math.ceil(yHi/yStep)*yStep,yStep,title:`${lvl()}${lvl()?" - ":""}Battle intensity${rt.p?" - "+routeName(rt.p):""}`});
   if(S.has){
     S.bands.forEach(b=>{svg.append(SV("rect",{x:X(b.t0),y:Tp,width:Math.max(2,X(b.t1)-X(b.t0)),height:B-Tp,fill:"#F4CCCC","fill-opacity":.6}),SV("text",{x:(X(b.t0)+X(b.t1))/2,y:Tp+22,"text-anchor":"middle","font-size":18,fill:"#9C2A1F","font-weight":700},"b"+b.no))});
     S.ends.forEach(e=>svg.append(SV("line",{x1:X(e.t),x2:X(e.t),y1:Tp,y2:B,stroke:"#9AA7BD","stroke-width":1.5,"stroke-dasharray":"6 6"}),SV("text",{x:X(e.t)-6,y:B-10,"text-anchor":"end","font-size":16,fill:"#5A6577"},walkNo(e.i))));
@@ -1105,22 +1122,43 @@ const TLPAL=["#E06666","#6FA8DC","#93C47D","#F6B26B","#8E7CC3","#C27BA0","#76A5A
 const typeOf=id=>doc.beats.types.find(t=>t.id===id);
 const typeName=id=>(typeOf(id)||{}).name||"";
 const typeColor=id=>{const i=doc.beats.types.findIndex(t=>t.id===id);return i<0?"#BFBFBF":TLPAL[i%TLPAL.length]};
-function timelineData(){const segs=[];let t=0;doc.walk.forEach((w,i)=>{if(HIDE&&E.walk(w))return;const a=parseFloat(w.dmin),b=parseFloat(w.dmax);const d=!isNaN(a)?a:(!isNaN(b)?b:0);if(d<=0)return;segs.push({i,w,t0:t,t1:t+d});t+=d});return {segs,has:segs.length>0,end:t}}
+/* segments on the shortest duration (the longest for the gap ranges). Paths of a split run side by side from the step before it, each in
+   its own lane (lane = path number, 0 = shared); a merge starts when its slowest path ends, and every faster path gets a dashed gap box
+   from its own end to the merge, labelled with the range of time it waits (shortest-based to longest-based). */
+function timelineData(){const N=walkNums(),segs=[],gaps=[];let t=0,tx=0;const open=new Map();const lanes=new Set();
+  const durs=w=>{const a=parseFloat(w.dmin),b=parseFloat(w.dmax);const d=!isNaN(a)?a:(!isNaN(b)?b:0);return [d,!isNaN(b)?b:d]};
+  doc.walk.forEach((w,i)=>{const r=N[i];const skip=HIDE&&E.walk(w);const [d,dx]=skip?[0,0]:durs(w);
+    if(r.p){const o=open.get(r.p)||{t,tx};const t0=o.t,x0=o.tx;open.set(r.p,{t:t0+d,tx:x0+dx});lanes.add(r.p);if(d>0)segs.push({i,w,t0,t1:t0+d,lane:r.p});return}
+    const js=(r.joins||[]).filter(p=>open.has(p));
+    if(js.length){const os=js.map(p=>({p,...open.get(p)}));const end=Math.max(...os.map(o=>o.t)),endx=Math.max(...os.map(o=>o.tx));
+      for(const o of os)if(o.t<end-1e-9||o.tx<endx-1e-9){const g=[end-o.t,endx-o.tx].map(v=>Math.max(0,Math.round(v))).sort((a,b)=>a-b);gaps.push({lane:o.p,t0:o.t,t1:end,lo:g[0],hi:g[1]})}
+      js.forEach(p=>open.delete(p));t=Math.max(t,end);tx=Math.max(tx,endx)}
+    if(d>0)segs.push({i,w,t0:t,t1:t+d,lane:0});t+=d;tx+=dx});
+  const end=Math.max(t,...[...open.values()].map(o=>o.t),...gaps.map(g=>g.t1));
+  return {segs,gaps,lanes:[...lanes].sort((a,b)=>a-b),has:segs.length>0,end}}
 function timelineSVG(){
-  const D=timelineData();const ax=axisTicks(D.has?D.end:600);const L=40,Rr=1560,Y0=196,Y1=236;const X=v=>L+(v/ax.max)*(Rr-L);
+  const D=timelineData();const ax=axisTicks(D.has?D.end:600);const L=40,Rr=1560,NL=D.lanes.length;const X=v=>L+(v/ax.max)*(Rr-L);
+  const Y0=NL>1?176:196,bh=NL>1?Math.min(72,24*NL):40,Y1=Y0+bh;const ln=l=>{const k=D.lanes.indexOf(l);return l&&k>=0&&NL>1?[Y0+k*bh/NL,bh/NL]:[Y0,bh]};
   const svg=SV("svg",{viewBox:"0 0 1600 400",class:"chart tl","data-x":"g",id:"tlChart",xmlns:SVGNS,"font-family":"JetBrains Mono, Consolas, monospace",style:"aspect-ratio:4/1"});
   svg.append(SV("rect",{x:0,y:0,width:1600,height:400,fill:"#FFFFFF",stroke:"#BFBFBF","stroke-width":1.5}));
   let lx=L;doc.beats.types.forEach(tp=>{svg.append(SV("rect",{x:lx,y:18,width:22,height:16,fill:typeColor(tp.id)}),SV("text",{x:lx+30,y:32,"font-size":17,fill:"#404040"},tp.name));lx+=60+tp.name.length*11});
   svg.append(SV("rect",{x:L,y:Y0,width:Rr-L,height:Y1-Y0,fill:"#F2F2F2"}));
   if(!D.has)svg.append(SV("text",{x:800,y:Y0-40,"text-anchor":"middle","font-size":22,fill:"#8C8C8C"},"[Auto-generated from Mission Walkthrough › Brief, Type and Duration]"));
-  D.segs.forEach((s,k)=>{const x0=X(s.t0),x1=X(s.t1);svg.append(SV("rect",{x:x0,y:Y0,width:Math.max(1,x1-x0),height:Y1-Y0,fill:typeColor(s.w.cat),stroke:"#FFFFFF","stroke-width":2}));
-    const lv=k%3;const ty=150-lv*40;const cx=(x0+x1)/2;const max=Math.max(8,Math.floor(Math.max(x1-x0,180)/11));const wr=walkNums()[s.i];const lab=`${wr.no} ${wr.brief}`.trim();
-    svg.append(SV("line",{x1:cx,x2:cx,y1:ty+6,y2:Y0,stroke:"#9AA7BD","stroke-width":1.2}),SV("text",{x:cx,y:ty,"text-anchor":"middle","font-size":17,fill:"#1F3864"},lab.length>max?lab.slice(0,max-1)+"…":lab))});
-  // type labels below (merge consecutive runs)
-  const runs=[];D.segs.forEach(s=>{const last=runs[runs.length-1];if(last&&last.cat===s.w.cat&&last.t1===s.t0)last.t1=s.t1;else runs.push({cat:s.w.cat,t0:s.t0,t1:s.t1})});
-  runs.forEach((r,k)=>{const nm=typeName(r.cat)||(HIDE?"":"[Type]");if(!nm)return;const cx=(X(r.t0)+X(r.t1))/2;svg.append(SV("text",{x:cx,y:Y1+28+(k%2)*22,"text-anchor":"middle","font-size":17,fill:"#404040","font-weight":700},nm))});
-  for(let i=0;i<=ax.n;i++){const v=i*ax.step;svg.append(SV("line",{x1:X(v),x2:X(v),y1:Y1+66,y2:Y1+76,stroke:"#7F7F7F","stroke-width":1.5}),SV("text",{x:X(v),y:Y1+100,"text-anchor":"middle","font-size":ax.n>14?15:17,fill:"#595959"},Math.round(v)+"s"))}
-  svg.append(SV("line",{x1:L,x2:Rr,y1:Y1+66,y2:Y1+66,stroke:"#7F7F7F","stroke-width":1.5}));
+  const wn=walkNums();
+  D.segs.forEach((s,k)=>{const x0=X(s.t0),x1=X(s.t1),[y,hh]=ln(s.lane);svg.append(SV("rect",{x:x0,y,width:Math.max(1,x1-x0),height:hh,fill:typeColor(s.w.cat),stroke:"#FFFFFF","stroke-width":2}));
+    if(s.lane&&NL>1&&x1-x0>22)svg.append(SV("text",{x:x0+5,y:y+hh/2+5,"font-size":Math.min(15,hh-6),fill:"#FFFFFF","font-weight":700},pathLetter(s.lane).toUpperCase()));
+    const lv=k%3;const ty=(NL>1?130:150)-lv*40;const cx=(x0+x1)/2;const max=Math.max(8,Math.floor(Math.max(x1-x0,180)/11));const wr=wn[s.i];const lab=`${wr.no} ${wr.brief}`.trim();
+    svg.append(SV("line",{x1:cx,x2:cx,y1:ty+6,y2:y,stroke:"#9AA7BD","stroke-width":1.2}),SV("text",{x:cx,y:ty,"text-anchor":"middle","font-size":17,fill:"#1F3864"},lab.length>max?lab.slice(0,max-1)+"…":lab))});
+  // a faster path waits for the merge: dashed box with the time it is short by
+  D.gaps.forEach(g=>{const x0=X(g.t0),x1=X(g.t1),[y,hh]=ln(g.lane);svg.append(SV("rect",{x:x0+1,y:y+1,width:Math.max(1,x1-x0-2),height:hh-2,fill:"#FFFFFF",stroke:"#7F7F7F","stroke-width":1.5,"stroke-dasharray":"6 4"}));
+    const lab=g.lo===g.hi?`+${g.lo}s`:`+${g.lo}-${g.hi}s`;if(x1-x0>lab.length*8)svg.append(SV("text",{x:(x0+x1)/2,y:y+hh/2+5,"text-anchor":"middle","font-size":Math.min(15,hh-6),fill:"#595959"},lab))});
+  // type labels below (merge consecutive runs of one lane)
+  const runs=[];D.segs.forEach(s=>{const last=runs.filter(r=>r.lane===s.lane).pop();if(last&&last.cat===s.w.cat&&last.t1===s.t0)last.t1=s.t1;else runs.push({cat:s.w.cat,t0:s.t0,t1:s.t1,lane:s.lane})});
+  const rows=Math.max(2,NL);runs.forEach((r,k)=>{const nm=typeName(r.cat)||(HIDE?"":"[Type]");if(!nm)return;const cx=(X(r.t0)+X(r.t1))/2;const row=r.lane&&NL>1?D.lanes.indexOf(r.lane):k%2;
+    svg.append(SV("text",{x:cx,y:Y1+26+row*20,"text-anchor":"middle","font-size":16,fill:"#404040","font-weight":700},nm))});
+  const AY=Y1+30+rows*20;
+  for(let i=0;i<=ax.n;i++){const v=i*ax.step;svg.append(SV("line",{x1:X(v),x2:X(v),y1:AY,y2:AY+10,stroke:"#7F7F7F","stroke-width":1.5}),SV("text",{x:X(v),y:AY+34,"text-anchor":"middle","font-size":ax.n>14?15:17,fill:"#595959"},Math.round(v)+"s"))}
+  svg.append(SV("line",{x1:L,x2:Rr,y1:AY,y2:AY,stroke:"#7F7F7F","stroke-width":1.5}));
   return svg;
 }
 
@@ -1367,7 +1405,7 @@ function outline(){const nav=$("#outline");nav.textContent="";CURL.toc.forEach(e
   a.addEventListener("click",ev=>{ev.preventDefault();const el=$("#pg"+e.p);if(el)$("#view").scrollTo({top:el.offsetTop*(+$("#pages").dataset.z||1)-10,behavior:"smooth"});$("#side").classList.remove("open")});nav.append(a)})}
 function refreshDerived(){
   if(!CURL||PREVIEW)return;const pm=MODE;MODE="edit";BSC=battleSeries();const pgn=$("#pages").paging;if(pgn){CHAR_SOLO=pgn.chars;WALK_SOLO=pgn.walk||new Set();TBL_BREAKS=pgn.tbl}const L=layout();CURL=L;const old=$("#tocBlock");if(old){TOC_FIT={leg:false,plan:Infinity};old.replaceWith(tocBlock(L.toc));fitCover($("#pg1"),L.toc)}
-  const c=$("#beatChart");if(c)c.replaceWith(chartSVG());const bc=$("#battleChart");if(bc)bc.replaceWith(battleChartSVG());const tl=$("#tlChart");if(tl)tl.replaceWith(timelineSVG());const t=$("#walkTotal");if(t){t.textContent="";t.append(PH(walkTotals(),"[sss]-[sss]"))}MODE=pm;
+  const rts=walkRoutes();$$('[id^="beatChart"]').forEach(c=>c.replaceWith(chartSVG(rts[+c.dataset.route]||rts[0],+c.dataset.route)));$$('[id^="battleChart"]').forEach(c=>c.replaceWith(battleChartSVG(+c.dataset.route)));const tl=$("#tlChart");if(tl)tl.replaceWith(timelineSVG());const t=$("#walkTotal");if(t){t.textContent="";t.append(PH(walkTotals(),"[sss]-[sss]"))}MODE=pm;
   outline();status();checkOverflow();
 }
 function status(){const st=doc.state,m=doc.meta;const v=verStr(st);const pill=$("#verPill");
@@ -1663,6 +1701,7 @@ const HELP=[
   ["? action","An action starting with ? (after its number) is optional: shown as a grey [Option] and left out of every statistic."],
   ["##1 Brief","A Walkthrough Brief starting with ##1, ##2… is a step on path 1, 2…: after 06 it is numbered 07a, 07b, and each path counts on by itself (08a…). Only the title after the prefix is printed."],
   ["{1,2} Brief","Merges paths 1 and 2: the step takes the next free number and lists where each path ended, e.g. 09 - Title (07b,08a). Later ##n briefs branch again from there (12a, 12b). A plain brief closes any open paths."],
+  ["Paths in Beats","With paths, both Beats charts come once per path (Path A, Path B…), each following that path plus the shared steps. The Beats Timeline draws the paths side by side; a path that ends early gets a dashed box up to the merge with the time it is short by."],
   ["##1 in text","In a Walkthrough description or action list, ##1, ##2… shows as a shaded [Along Path A], [Along Path B]… tag."],
   ["Lists","In any text box, Tab / Shift+Tab (or → / ← on the format bar) indents a list item one level or back; lists go two levels deep."],
   ["PO camera","+ Camera on a PO entry stores the level file, Location and Rotation; paste both from Unreal at once. Click Loc or Rot to copy it for pasting into Unreal."],
