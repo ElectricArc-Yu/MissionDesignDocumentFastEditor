@@ -122,6 +122,7 @@ span.f{display:inline;min-height:0}
 .chart{width:100%;aspect-ratio:16/9;display:block}
 .tbl{display:grid;border-top:.5pt solid var(--rule);border-left:.5pt solid var(--rule)}
 .tbl .td{border-right:.5pt solid var(--rule);border-bottom:.5pt solid var(--rule);padding:.8mm 1.2mm;font-size:7.5pt;min-width:0;overflow:hidden;word-break:break-word}
+.tbl .td.mid{display:flex;flex-direction:column;justify-content:center;text-align:center}.tbl .td.mid>*{text-align:center}  /* vertically centred cell (Word: verticalAlign center) */
 .tbl .th{background:var(--th);font-weight:700;color:var(--h3)}
 .tbl .thumb{width:100%;aspect-ratio:16/9}
 .tbl .tr{display:contents}
@@ -330,7 +331,7 @@ function newDoc(){
     plans:[{id:uid(),name:"Overview",upd:"",img:""},...Array.from({length:6},()=>({id:uid(),name:"",upd:"",img:""}))],
     flow:{mode:"both",charts:[newChart("Main Flow")],guide:[newGuide(),newGuide(),newGuide()]},
     beats:{timeline:"",tlMode:"auto",types:[{id:"tp_battle",name:"Battle"},{id:"tp_explore",name:"Exploration"},{id:"tp_puzzle",name:"Puzzle"}]},
-    battle:{enemyTypes:[],units:[],events:[],decay:{amount:2,per:30}},
+    battle:{enemyTypes:[],units:[],events:[],decay:{amount:2,per:30},abs:false},
     appx:{pre:newPre(),spec:[newSpec(),newSpec(),newSpec()],guide:[newRule(),newRule(),newRule()]},
     log:[],po:[],committed:null,images:{}};
 }
@@ -756,7 +757,11 @@ function pathFmt(html){if(!/##\s*\d/.test(html||""))return html;const d=actsDOM(
   for(const n of ns){const t=document.createElement("template");t.innerHTML=esc(n.nodeValue).replace(/##\s*(\d+)/g,(m,p)=>`<span class="tok tokp">[Along Path ${pathLetter(+p).toUpperCase()}]</span>`);n.replaceWith(t.content)}
   return d.innerHTML}
 const walkNo=i=>{const r=walkNums()[i];return r?r.no:pad(i+1,2)};
-function walkTotals(){let a=0,b=0,ok=false;for(const w of doc.walk){const x=parseFloat(w.dmin),y=parseFloat(w.dmax);if(!isNaN(x)){a+=x;ok=true}if(!isNaN(y)){b+=y;ok=true}else if(!isNaN(x))b+=x}return ok?`${Math.round(a)}-${Math.round(b)}s`:null}
+/** total duration of the longest route (by its longest total), shown as that route's shortest-longest */
+function walkTotals(){let best=null,ok=false;
+  for(const r of walkRoutes()){let a=0,b=0;for(const i of r.idx){const w=doc.walk[i],x=parseFloat(w.dmin),y=parseFloat(w.dmax);if(!isNaN(x)){a+=x;ok=true}if(!isNaN(y)){b+=y;ok=true}else if(!isNaN(x))b+=x}
+    if(!best||b>best.b||b===best.b&&a>best.a)best={a,b}}
+  return ok?`${Math.round(best.a)}-${Math.round(best.b)}s`:null}
 R.walk=(p)=>{const out=[];const halves=[];const tot=walkTotals();const cnt=HIDE?doc.walk.filter(w=>!E.walk(w)).length:doc.walk.length;
   if(p.first)out.push(LR(T("h1","Mission Walkthrough"),T("meta",[(tot||!HIDE)?L1("Total Duration: "):null,(tot||!HIDE)?h("span",{id:"walkTotal"},PH(tot,"[sss]-[sss]")):null,(tot||!HIDE)?" · ":null,cnt+" subsections"],{class:"r"})));
   const nums=walkNums();
@@ -767,7 +772,7 @@ R.walk=(p)=>{const out=[];const halves=[];const tot=walkTotals();const cnt=HIDE?
     const from=wn.from?h("span",null," ("+wn.from.join(",")+")"):null;
     const cat=typeName(w.cat);const catEl=isEdit()?h("select",{class:"walkcat ctl","data-act":"walk-cat","data-id":w.id,"aria-label":"Beat type"},h("option",{value:""},"(type)"),doc.beats.types.map(t=>h("option",{value:t.id,selected:t.id===w.cat},t.name||"(unnamed)"))):(cat?h("span",null," ("+cat+")"):(HIDE?null:h("span",{class:"ph"}," ([Type])")));
     out.push(h("div",{"data-x":"t","data-s":"h2"},wn.no,br?" - ":null,br,from,catEl,ICTL(["walk-up","↑",w.id],["walk-down","↓",w.id],["walk-ins","+ Insert after",w.id],["walk-rm","Remove",w.id],nr<5?["walk-row-add","+ Image row",w.id]:null,nr>0?["walk-row-rm","− Image row",w.id]:null)));
-    const it=F(b+".int","{+/-}[Amount]",{inline:true}),d1=F(b+".dmin","[sss]",{inline:true}),d2=F(b+".dmax","[sss]",{inline:true});
+    const it=F(b+".int",doc.battle.abs?"[Amount]":"{+/-}[Amount]",{inline:true}),d1=F(b+".dmin","[sss]",{inline:true}),d2=F(b+".dmax","[sss]",{inline:true});
     /* legends are optional; once any picture of the subsection has one, every picture keeps a legend line (blank if it has none) so the pictures stay level */
     const capOn=!HIDE||w.mc.some(has)||w.rc.some(has);
     const fig=(g,k,lbl)=>{const im=I(`${b}.${g}.${k}`,lbl);if(!im)return null;if(!capOn)return im;
@@ -809,8 +814,8 @@ function tlModeCtl(){if(!isEdit())return null;return h("select",{class:"ctl","da
   [["auto","Generate from Brief, type and time"],["image","Use an image"]].map(([v,t])=>h("option",{value:v,selected:doc.beats.tlMode===v},t)))}
 R.beats2=(p)=>[p.h1?T("h1","Beats"):null,h("div",{"data-x":"t","data-s":"h2"},"Beats Timeline",tlModeCtl()),
   doc.beats.tlMode==="image"?I("beats.timeline","Beats Timeline (up to 20:5)","4/1","contain"):timelineSVG()];
-const cellD=(x,fill)=>h("div",{class:"td","data-d":"td","data-fill":fill||null,style:fill?`background:#${fill}`:null},x);
-const thD=x=>h("div",{class:"td th","data-d":"td"},T("small",x));
+const cellD=(x,fill,mid)=>h("div",{class:"td"+(mid?" mid":""),"data-d":"td","data-fill":fill||null,style:fill?`background:#${fill}`:null},x);
+const thD=(x,mid)=>h("div",{class:"td th"+(mid?" mid":""),"data-d":"td"},T("small",x));
 const phCell=x=>cellD(T("small",h("span",{class:"ph"},x)));
 const batH1=p=>p.h1?LR(T("h1","Battle Intensity"),isEdit()?h("div",null,ICTL(["battle-edit","Edit battle data",""])):null):null;
 R.bat1=(p)=>{const B=doc.battle;const types=B.enemyTypes.map(t=>t.name).filter(Boolean);
@@ -829,12 +834,12 @@ R.bat2=(p)=>{const B=doc.battle;return [batH1(p),p.first?T("h2","Events & Defaul
 R.bat3=(p)=>{const walks=doc.walk.map((w,i)=>({w,i})).filter(x=>!HIDE||!E.walk(x.w));const n=walks.length;
   return [batH1(p),p.first?T("h2","Battle & Event Frequency by Brief"):null,p.first?T("cap","Count of each combat unit (red) and event (green) per Mission Walkthrough subsection, optional actions included. Max / Min Rest: the longest and shortest !(ss) rest, or with none, the longest / shortest duration minus all battle and event time."):null,
     h("div",{class:"tbl","data-d":"tbl",style:`grid-template-columns:42mm repeat(${Math.max(1,n)},minmax(0,1fr))`},
-      h("div",{class:"tr","data-d":"tr"},thD("Type"),walks.map(x=>{const c=thD(walkNo(x.i));c.firstChild.style.textAlign="center";return c})),
+      h("div",{class:"tr","data-d":"tr"},thD("Type",1),walks.map(x=>thD(walkNo(x.i),1))),
       p.rows.length?p.rows.map(r=>{if(r.k==="rmax"||r.k==="rmin"){const f=r.k==="rmax"?"max":"min";
-          return h("div",{class:"tr","data-d":"tr"},cellD(T("small",r.k==="rmax"?"Max Rest":"Min Rest")),walks.map(x=>{const v=(BSC.rest[x.w.id]||{})[f];
-            return cellD(T("small",v==null?"":Math.round(v)+"s",{style:"text-align:center"}),v==null?null:"EDEDED")}))}
-        const key=r.k+r.u.no;return h("div",{class:"tr","data-d":"tr"},cellD(T("small",`${r.k}${r.u.no} ${r.u.name||""}`.trim())),
-        walks.map(x=>{const c=(BSC.freq[x.w.id]||{})[key]||0;return cellD(T("small",c?String(c):"",{style:"text-align:center"}),c?(r.k==="b"?"F8D7D2":"D9EAD3"):null)}))})
+          return h("div",{class:"tr","data-d":"tr"},cellD(T("small",r.k==="rmax"?"Max Rest":"Min Rest",{style:"text-align:center"}),null,1),walks.map(x=>{const v=(BSC.rest[x.w.id]||{})[f];
+            return cellD(T("small",v==null?"":Math.round(v)+"s",{style:"text-align:center"}),v==null?null:"EDEDED",1)}))}
+        const key=r.k+r.u.no;return h("div",{class:"tr","data-d":"tr"},cellD(T("small",`${r.k}${r.u.no} ${r.u.name||""}`.trim(),{style:"text-align:center"}),null,1),
+        walks.map(x=>{const c=(BSC.freq[x.w.id]||{})[key]||0;return cellD(T("small",c?String(c):"",{style:"text-align:center"}),c?(r.k==="b"?"F8D7D2":"D9EAD3"):null,1)}))})
       :h("div",{class:"tr","data-d":"tr"},phCell("[b1 Combat Unit]"),walks.map(()=>cellD(T("small",""))))) ]};
 function valCell(v){const src=v&&(v.thumb?urlOf(v.thumb):v.img);
   if(src)return h("div",{class:"slot has thumb","data-x":"i","data-src":src,"data-fit":"contain",style:`width:60%;background-image:url("${src}");background-size:contain`});
@@ -1004,21 +1009,29 @@ function chartFrame(svg,o){
 const lvl=()=>doc.meta.level||(HIDE?"":"[Level Name]");
 const legendItem=(svg,x,label,draw)=>{draw(x);svg.append(SV("text",{x:x+60,y:48,"font-size":22,fill:"#404040"},label));return x+60+label.length*13.5+30};
 
-/* time-based beats chart (min / max durations) */
-function chartData(idx=doc.walk.map((_,i)=>i)){const pts=[{n:0,a:0,b:0,I:0}];let a=0,b=0,I=0,has=false;
+/* time-based beats chart (min / max durations). Battle Data › Absolute intensity: each Intensity is the beat's own value (an empty one
+   keeps the last), not a change; the chart then draws each beat as a bar over its shortest duration, joined by a line through the bar tops. */
+function chartData(idx=doc.walk.map((_,i)=>i)){const pts=[{n:0,a:0,b:0,I:0}];let a=0,b=0,I=0,has=false;const abs=!!doc.battle.abs;
   idx.forEach(i=>{const w=doc.walk[i];const dmin=parseFloat(w.dmin),dmax=parseFloat(w.dmax),di=parseFloat(String(w.int).replace(/\s/g,""));if(isNaN(dmin)&&isNaN(dmax)&&isNaN(di))return;has=true;
-    a+=isNaN(dmin)?(isNaN(dmax)?0:dmax):dmin;b+=isNaN(dmax)?(isNaN(dmin)?0:dmin):dmax;I+=isNaN(di)?0:di;pts.push({n:i,a,b,I})});return {pts,has}}
+    const a0=a;a+=isNaN(dmin)?(isNaN(dmax)?0:dmax):dmin;b+=isNaN(dmax)?(isNaN(dmin)?0:dmin):dmax;I=isNaN(di)?I:abs?di:I+di;pts.push({n:i,a0,a,b,I,cat:w.cat})});return {pts,has}}
 /** route: {p, idx} from walkRoutes(); one chart per route when the walkthrough splits */
 function chartSVG(route=walkRoutes()[0],k=0){
-  const {pts,has}=chartData(route.idx);const ax=axisTicks(has?Math.max(...pts.map(p=>p.b)):960);
+  const {pts,has}=chartData(route.idx);const abs=!!doc.battle.abs;const ax=axisTicks(has?Math.max(...pts.map(p=>abs?p.a:p.b)):960);
   const yLo=has?Math.min(0,...pts.map(p=>p.I)):0,yHiRaw=has?Math.max(1,...pts.map(p=>p.I)):10;const yStep=niceNum((yHiRaw-yLo)/5);
   const svg=SV("svg",{viewBox:"0 0 1600 900",class:"chart","data-x":"g",id:"beatChart"+(k?"-"+k:""),"data-route":k,xmlns:SVGNS,"font-family":"JetBrains Mono, Consolas, monospace"});
   const {X,Y,L,Rr,Tp,B}=chartFrame(svg,{xMax:ax.max,xStep:ax.step,xN:ax.n,yMin:Math.floor(yLo/yStep)*yStep,yMax:Math.ceil(yHiRaw/yStep)*yStep,yStep,title:`${lvl()}${lvl()?" - ":""}Intensity over time${route.p?" - "+routeName(route.p):""}`});
-  if(has){svg.append(SV("polyline",{points:pts.map(p=>`${X(p.b)},${Y(p.I)}`).join(" "),fill:"none",stroke:"#ED7D31","stroke-width":4,"stroke-dasharray":"14 10"}));
+  if(has&&abs){const bs=pts.slice(1),y0=Y(0);
+    bs.forEach(p=>{const x0=X(p.a0),x1=X(p.a),y=Y(p.I);svg.append(SV("rect",{x:x0,y:Math.min(y,y0),width:Math.max(2,x1-x0),height:Math.abs(y0-y),fill:typeColor(p.cat),"fill-opacity":.55,stroke:"#FFFFFF","stroke-width":2}))});
+    const mid=p=>X((p.a0+p.a)/2);
+    svg.append(SV("polyline",{points:bs.map(p=>`${mid(p)},${Y(p.I)}`).join(" "),fill:"none",stroke:"#2F5496","stroke-width":5,"stroke-linejoin":"round"}));
+    bs.forEach(p=>svg.append(SV("circle",{cx:mid(p),cy:Y(p.I),r:7,fill:"#2F5496"}),SV("text",{x:mid(p),y:Y(p.I)-16,"text-anchor":"middle","font-size":20,fill:"#1F3864"},walkNo(p.n))))}
+  else if(has){svg.append(SV("polyline",{points:pts.map(p=>`${X(p.b)},${Y(p.I)}`).join(" "),fill:"none",stroke:"#ED7D31","stroke-width":4,"stroke-dasharray":"14 10"}));
     svg.append(SV("polyline",{points:pts.map(p=>`${X(p.a)},${Y(p.I)}`).join(" "),fill:"none",stroke:"#2F5496","stroke-width":5}));
     pts.slice(1).forEach(p=>svg.append(SV("circle",{cx:X(p.a),cy:Y(p.I),r:7,fill:"#2F5496"}),SV("text",{x:X(p.a),y:Y(p.I)-16,"text-anchor":"middle","font-size":20,fill:"#1F3864"},walkNo(p.n))))}
   else svg.append(SV("text",{x:(L+Rr)/2,y:(Tp+B)/2,"text-anchor":"middle","font-size":28,fill:"#8C8C8C"},"[Auto-generated from Mission Walkthrough › Intensity & Duration]"));
-  let x=1000;x=legendItem(svg,x,"Min duration",x=>svg.append(SV("line",{x1:x,x2:x+50,y1:40,y2:40,stroke:"#2F5496","stroke-width":5})));
+  let x=1000;if(abs){x=legendItem(svg,x,"Beat (min duration)",x=>svg.append(SV("rect",{x,y:30,width:50,height:20,fill:"#9AA7BD","fill-opacity":.55})));
+    legendItem(svg,x,"Intensity",x=>svg.append(SV("line",{x1:x,x2:x+50,y1:40,y2:40,stroke:"#2F5496","stroke-width":5})));return svg}
+  x=legendItem(svg,x,"Min duration",x=>svg.append(SV("line",{x1:x,x2:x+50,y1:40,y2:40,stroke:"#2F5496","stroke-width":5})));
   legendItem(svg,x,"Max duration",x=>svg.append(SV("line",{x1:x,x2:x+50,y1:40,y2:40,stroke:"#ED7D31","stroke-width":4,"stroke-dasharray":"14 10"})));
   return svg;
 }
@@ -1145,10 +1158,15 @@ function timelineSVG(){
   svg.append(SV("rect",{x:L,y:Y0,width:Rr-L,height:Y1-Y0,fill:"#F2F2F2"}));
   if(!D.has)svg.append(SV("text",{x:800,y:Y0-40,"text-anchor":"middle","font-size":22,fill:"#8C8C8C"},"[Auto-generated from Mission Walkthrough › Brief, Type and Duration]"));
   const wn=walkNums();
+  /* labels sit on three staggered levels; each gets the room up to its nearest neighbours on the same level. Too little room for the
+     name (a few letters at least) leaves the number alone */
+  const cxs=D.segs.map(s=>(X(s.t0)+X(s.t1))/2),CW=10.3;
+  const label=(k,lab,no)=>{let room=2*Math.min(cxs[k],1600-cxs[k]);for(const j of [k-3,k+3])if(j>=0&&j<cxs.length)room=Math.min(room,Math.abs(cxs[j]-cxs[k])-14);
+    const fit=Math.floor(room/CW);return lab.length<=fit?lab:fit>=no.length+8?lab.slice(0,fit-1)+"…":no};
   D.segs.forEach((s,k)=>{const x0=X(s.t0),x1=X(s.t1),[y,hh]=ln(s.lane);svg.append(SV("rect",{x:x0,y,width:Math.max(1,x1-x0),height:hh,fill:typeColor(s.w.cat),stroke:"#FFFFFF","stroke-width":2}));
     if(s.lane&&NL>1&&x1-x0>22)svg.append(SV("text",{x:x0+5,y:y+hh/2+5,"font-size":Math.min(15,hh-6),fill:"#FFFFFF","font-weight":700},pathLetter(s.lane).toUpperCase()));
-    const lv=k%3;const ty=(NL>1?130:150)-lv*40;const cx=(x0+x1)/2;const max=Math.max(8,Math.floor(Math.max(x1-x0,180)/11));const wr=wn[s.i];const lab=`${wr.no} ${wr.brief}`.trim();
-    svg.append(SV("line",{x1:cx,x2:cx,y1:ty+6,y2:y,stroke:"#9AA7BD","stroke-width":1.2}),SV("text",{x:cx,y:ty,"text-anchor":"middle","font-size":17,fill:"#1F3864"},lab.length>max?lab.slice(0,max-1)+"…":lab))});
+    const lv=k%3;const ty=(NL>1?130:150)-lv*40;const cx=cxs[k];const wr=wn[s.i];const lab=`${wr.no} ${wr.brief.trim()}`.trim();
+    svg.append(SV("line",{x1:cx,x2:cx,y1:ty+6,y2:y,stroke:"#9AA7BD","stroke-width":1.2}),SV("text",{x:cx,y:ty,"text-anchor":"middle","font-size":17,fill:"#1F3864"},label(k,lab,wr.no)))});
   // a faster path waits for the merge: dashed box with the time it is short by
   D.gaps.forEach(g=>{const x0=X(g.t0),x1=X(g.t1),[y,hh]=ln(g.lane);svg.append(SV("rect",{x:x0+1,y:y+1,width:Math.max(1,x1-x0-2),height:hh-2,fill:"#FFFFFF",stroke:"#7F7F7F","stroke-width":1.5,"stroke-dasharray":"6 4"}));
     const lab=g.lo===g.hi?`+${g.lo}s`:`+${g.lo}-${g.hi}s`;if(x1-x0>lab.length*8)svg.append(SV("text",{x:(x0+x1)/2,y:y+hh/2+5,"text-anchor":"middle","font-size":Math.min(15,hh-6),fill:"#595959"},lab))});
@@ -1360,6 +1378,8 @@ function battleEditor(){
         h("td",{style:"width:150px"},IN(e.delta,v=>{e.delta=v===""?"":+v},{type:"number",step:"0.5",ph:"+2 / -1"})),h("td",{style:"width:40px"},X(()=>B.events.splice(i,1))))))),
       h("div",null,h("button",{class:"btn",onclick:()=>{B.events.push({id:uid(),no:nextNo(B.events),name:"",delta:""});draw()}},"+ Add event"))));
     body.append(sec("Defaults",h("div",{class:"inl",style:"flex-wrap:wrap"},"After every",IN(B.decay.per,v=>{B.decay.per=+v||30},{type:"number",w:"80px",ph:"Seconds"}),"seconds without a battle or event, intensity drops by",IN(B.decay.amount,v=>{B.decay.amount=+v||0},{type:"number",w:"80px",ph:"Amount"}),"(a battle or event restarts the count).")));
+    body.append(sec("Time Based Beats",h("label",{class:"inl"},h("input",{type:"checkbox",checked:!!B.abs,onchange:e=>{B.abs=e.target.checked}}),
+      "Absolute intensity: each Walkthrough Intensity is the beat's own value (not a +/- change), and the Time Based chart shows a bar per beat over its shortest duration, joined by a line through the bar tops")));
     body.append(sec("Beats Timeline types",h("p",{class:"hint",style:"margin:0"},"Each Mission Walkthrough subsection picks one of these; it appears in brackets after the Brief and colours the Beats Timeline."),
       h("table",{class:"bt"},h("tbody",null,types.map((t,i)=>h("tr",null,h("td",null,IN(t.name,v=>{t.name=v},{ph:"Type name"})),h("td",{style:"width:40px"},X(()=>types.splice(i,1))))))),
       h("div",null,h("button",{class:"btn",onclick:()=>{types.push({id:uid(),name:""});draw()}},"+ Add type"))));
@@ -1465,7 +1485,7 @@ function flat(d){
   B.units.forEach(u=>A("battle.units."+u.id,"8.1","Combat unit b"+u.no,`${u.name||"(unnamed)"} · ${u.enemies.map(e=>en(e.type)+" ×"+e.count).join(", ")||"no enemies"} · intensity ${u.intensity===""?"—":u.intensity}`));
   o["#events"]={idx:"8.2",label:"Events",v:B.events.map(e=>e.id).join(","),kind:"list"};
   B.events.forEach(e=>A("battle.events."+e.id,"8.2","Event e"+e.no,`${e.name||"(unnamed)"} · ${e.delta===""?"—":(+e.delta>0?"+":"")+e.delta}`));
-  A("battle.decay","8.2","Natural decay",`-${B.decay.amount} / ${B.decay.per}s`);
+  A("battle.decay","8.2","Natural decay",`-${B.decay.amount} / ${B.decay.per}s`);A("battle.abs","7.1","Time Based Beats › Absolute intensity",B.abs?"On":"");
   // Appendix B and C are revised over time; Appendix A is locked after the initial version
   const X=d.appx;o["#spec"]={idx:"B",label:"Project Specification",v:X.spec.map(r=>r.id).join(","),kind:"list"};
   X.spec.forEach((r,i)=>{const n="B."+(i+1),p="appx.spec."+r.id,nm=`Spec ${i+1}`;[["item","Item"],["spec","Spec"],["info","Info"]].forEach(([k,l])=>{A(`${p}.${k}`,n,`${nm} › ${l}`,r[k],"r");A(`${p}.${k}Img`,n,`${nm} › ${l} image`,r[k+"Img"],"i")})});
@@ -1701,6 +1721,7 @@ const HELP=[
   ["? action","An action starting with ? (after its number) is optional: shown as a grey [Option] and left out of every statistic."],
   ["##1 Brief","A Walkthrough Brief starting with ##1, ##2… is a step on path 1, 2…: after 06 it is numbered 07a, 07b, and each path counts on by itself (08a…). Only the title after the prefix is printed."],
   ["{1,2} Brief","Merges paths 1 and 2: the step takes the next free number and lists where each path ended, e.g. 09 - Title (07b,08a). Later ##n briefs branch again from there (12a, 12b). A plain brief closes any open paths."],
+  ["Absolute intensity","Battle data › Time Based Beats (off by default): each Walkthrough Intensity is the beat's own value instead of a +/- change, and the Time Based chart shows one bar per beat over its shortest duration with a line through the bar tops."],
   ["Paths in Beats","With paths, both Beats charts come once per path (Path A, Path B…), each following that path plus the shared steps. The Beats Timeline draws the paths side by side; a path that ends early gets a dashed box up to the merge with the time it is short by."],
   ["##1 in text","In a Walkthrough description or action list, ##1, ##2… shows as a shaded [Along Path A], [Along Path B]… tag."],
   ["Lists","In any text box, Tab / Shift+Tab (or → / ← on the format bar) indents a list item one level or back; lists go two levels deep."],
@@ -1919,7 +1940,7 @@ async function exportDocx(){
     const trs=[...el.children].filter(c=>c.dataset.d==="tr");const hd=[...trs[0].children];
     const ws=hd.map(c=>c.getBoundingClientRect().width);const sc=tw/ws.reduce((a,b)=>a+b,0);const W=ws.map(w=>Math.floor(w*sc));
     const B={style:D.BorderStyle.SINGLE,size:4,color:"BFBFBF"};const rows=[];
-    for(const [ri,tr] of trs.entries()){const cells=[];for(const [j,td] of [...tr.children].entries()){cells.push(new D.TableCell({width:{size:W[j],type:D.WidthType.DXA},margins:{left:70,right:70,top:40,bottom:40},
+    for(const [ri,tr] of trs.entries()){const cells=[];for(const [j,td] of [...tr.children].entries()){cells.push(new D.TableCell({width:{size:W[j],type:D.WidthType.DXA},margins:{left:70,right:70,top:40,bottom:40},verticalAlign:td.classList.contains("mid")?D.VerticalAlign.CENTER:undefined,
       shading:ri===0?{type:D.ShadingType.CLEAR,color:"auto",fill:"D9E2F3"}:(td.dataset.fill?{type:D.ShadingType.CLEAR,color:"auto",fill:td.dataset.fill}:undefined),children:cellKids(await many(td,W[j]-140))}))}
       rows.push(new D.TableRow({tableHeader:ri===0,cantSplit:true,children:cells}))}
     return [new D.Table({width:{size:tw,type:D.WidthType.DXA},columnWidths:W,layout:D.TableLayoutType.FIXED,borders:{top:B,bottom:B,left:B,right:B,insideHorizontal:B,insideVertical:B},rows}),tiny()];
