@@ -311,7 +311,7 @@ const EDIT0={q:0,fine:0,fh:false,fv:false,crop:null,b:100,c:100,s:100};
 function newWalk(){return {id:uid(),brief:"",cat:"",desc:"",int:"",dmin:"",dmax:"",acts:"",rows:2,m:Array(10).fill(""),r:Array(5).fill(""),mc:Array(10).fill(""),rc:Array(5).fill("")}}
 function newChar(){return {id:uid(),name:"",img:"",role:"",text:""}}
 const newNode=(label)=>({id:uid(),label,index:"",name:""});
-const newPre=()=>({name:"",n:3,imgs:Array.from({length:9},()=>({img:"",cap:""})),text:["","",""]});
+const newPre=()=>({id:uid(),name:"",n:3,imgs:Array.from({length:9},()=>({img:"",cap:""})),text:["","",""]});
 /* a World Setting block fills one quarter of a page (half its width, half its height) with text or six pictures;
    a full-line list (references to other documents) takes the whole half-page row, the room of two blocks */
 const newWorld=(kind="text")=>({id:uid(),title:"",kind,text:"",imgs:Array(6).fill(""),caps:Array(6).fill("")});
@@ -332,7 +332,7 @@ function newDoc(){
     flow:{mode:"both",charts:[newChart("Main Flow")],guide:[newGuide(),newGuide(),newGuide()]},
     beats:{timeline:"",tlMode:"auto",types:[{id:"tp_battle",name:"Battle"},{id:"tp_explore",name:"Exploration"},{id:"tp_puzzle",name:"Puzzle"}]},
     battle:{enemyTypes:[],units:[],events:[],decay:{amount:2,per:30},abs:false},
-    appx:{pre:newPre(),spec:[newSpec(),newSpec(),newSpec()],guide:[newRule(),newRule(),newRule()]},
+    appx:{pre:[newPre()],spec:[newSpec(),newSpec(),newSpec()],guide:[newRule(),newRule(),newRule()]},
     log:[],po:[],committed:null,images:{}};
 }
 let doc=newDoc();
@@ -476,7 +476,7 @@ const E={
   chart:c=>c.mode==="image"?!hasI(c.img):!c.nodes.some(n=>n.type!=="start"&&n.type!=="end"),
   guide:g=>!(hasR(g.text)||hasI(g.img)),
   po:r=>!(hasI(r.po)||hasI(r.before)||hasI(r.after)||hasR(r.reason)||hasR(r.loc)||r.cam),
-  pre:()=>{const P=doc.appx.pre;return !(has(P.name)||P.text.some(hasR)||P.imgs.some(x=>hasI(x.img)||has(x.cap)))},
+  pre:P=>{return !(has(P.name)||P.text.some(hasR)||P.imgs.some(x=>hasI(x.img)||has(x.cap)))},
   spec:r=>!["item","spec","info"].some(k=>hasR(r[k])||hasI(r[k+"Img"])),
   rule:r=>!(has(r.name)||hasR(r.brief)||hasI(r.briefImg)||hasR(r.detail)||(r.cites||[]).length),
 };
@@ -552,6 +552,7 @@ function lastEditText(){const s=doc.state.lastEdit||doc.meta.created;if(!s)retur
 const chunk=(a,n)=>{const r=[];for(let i=0;i<a.length;i+=n)r.push(a.slice(i,i+n));return r};
 let NOCOVER=false;
 let CHAR_SOLO=new Set();   // character row indices that start their own page
+let PRE_SOLO=new Set();     // Appendix A section ids that start their own page
 let WALK_SOLO=new Set();   // walkthrough subsection indices that start their own page
 const newBreaks=()=>({aspec:new Set(),aguide:new Set(),appB:new Set(),appA:new Set()});
 let TBL_BREAKS=newBreaks();   // appendix row indices that start a new page, measured by renderInto
@@ -614,7 +615,11 @@ function layout(){
     rc.forEach((rows,i)=>{n=add({t:"bat3",sec:SEC.bat,rows,first:i===0,h1:tf});batH()})}
   // Appendices A-E
   const X=doc.appx;
-  if(show(E.pre)){n=add({t:"apre",sec:SEC.apre});toc.push({l:1,num:"A",t:"Preceding Process Result",p:n})}
+  // Preceding Process Result sections: two share a page while they fit, like the walkthrough
+  const pres=X.pre.map((it,i)=>({it,i})).filter(x=>!HIDE||!E.pre(x.it));
+  const pc=[];for(const x of pres){const l=pc[pc.length-1];if(l&&l.length===1&&!PRE_SOLO.has(x.it.id))l.push(x);else pc.push([x])}
+  pc.forEach((c,i)=>{n=add({t:"apre",sec:SEC.apre,items:c,first:i===0});if(i===0)toc.push({l:1,num:"A",t:"Preceding Process Result",p:n});
+    if(X.pre.length>1)c.forEach(x=>toc.push({l:2,num:"A."+(x.i+1),t:x.it.name,ph:"[Process Name]",p:n}))});
   const tbl=(t,rows,num,title)=>{const c=splitAt(rows,TBL_BREAKS[t]);if(!c.length&&!HIDE)c.push({rows:[],r0:0});
     c.forEach(({rows,r0},i)=>{n=add({t,sec:SEC[t],rows,r0,first:i===0,last:i===c.length-1});if(i===0)toc.push({l:1,num,t:title,p:n})})};
   tbl("aspec",HIDE?X.spec.filter(r=>!E.spec(r)):X.spec,"B","Project Specification");
@@ -858,20 +863,22 @@ R.appA=(p)=>{const cols="13% 7% 14% 23% 23% 20%";const hd=["Version","Section","
 /* Appendix A: the main output of the stage before this document (level art, 2D layout sketch, mood design, 3D sketch, decoration, white-boxing...). 1 image sits centred between text, 3 sit in a row above three text columns, 9 form a 3x3 grid over a short text band, none leaves three text columns.
    Filled images move to the front. The whole page is read-only once the initial version is marked complete. */
 const PRE_TX=["[What the stage produced]","[Key decisions it fixed: palette, scale, landmarks, routes]","[What this document builds on, and what is still open]"];
-R.apre=()=>{const P=doc.appx.pre,lock=isEdit()&&doc.state.init,pm=MODE;if(lock)MODE="export";
-  try{const ks=P.imgs.map((_,k)=>k);let show=[...ks.filter(k=>hasI(P.imgs[k].img)),...ks.filter(k=>!hasI(P.imgs[k].img))].slice(0,P.n);if(HIDE)show=show.filter(k=>hasI(P.imgs[k].img));
-    const fig=(k,hgt)=>{const s=I(`appx.pre.imgs.${k}.img`,"Stage Output 16:9");if(hgt){s.style.height=hgt;s.style.width="auto"}
-      const c=F(`appx.pre.imgs.${k}.cap`,"[Caption]",{s:"cap"});if(c)c.style.textAlign="center";return COL(s,c)};
-    const tx=[0,1,2].map(k=>F(`appx.pre.text.${k}`,PRE_TX[k],{rich:true}));const txRow=()=>tx.some(Boolean)?ROW("1fr 1fr 1fr",...tx.map(x=>COL(x))):null;
+R.apre=(p)=>{const lock=isEdit()&&doc.state.init,pm=MODE;if(lock)MODE="export";const halves=[];
+  try{p.items.forEach(({it:P},j)=>{const b="appx.pre."+P.id;const out=[];halves.push(out);if(j>0)out.push(HR());
+    const ks=P.imgs.map((_,k)=>k);let show=[...ks.filter(k=>hasI(P.imgs[k].img)),...ks.filter(k=>!hasI(P.imgs[k].img))].slice(0,P.n);if(HIDE)show=show.filter(k=>hasI(P.imgs[k].img));
+    const fig=(k,hgt)=>{const s=I(`${b}.imgs.${k}.img`,"Stage Output 16:9");if(hgt){s.style.height=hgt;s.style.width="auto"}
+      const c=F(`${b}.imgs.${k}.cap`,"[Caption]",{s:"cap"});if(c)c.style.textAlign="center";return COL(s,c)};
+    const tx=[0,1,2].map(k=>F(`${b}.text.${k}`,PRE_TX[k],{rich:true}));const txRow=()=>tx.some(Boolean)?ROW("1fr 1fr 1fr",...tx.map(x=>COL(x))):null;
     const m=show.length,n=m?P.n:0;let body;
     if(n===1)body=[ROW("1fr 2.2fr 1fr",COL(tx[0]),fig(show[0]),COL(tx[1],tx[2]))];
     else if(n===3){const g=GRID(m,show.map(k=>fig(k)));g.style.gridTemplateColumns=`repeat(${m},minmax(0,87mm))`;g.style.justifyContent="center";body=[g,txRow()]}
     else if(n===9){const g=GRID(Math.min(3,m),show.map(k=>fig(k,"37mm")));g.style.gridTemplateColumns=`repeat(${Math.min(3,m)},auto)`;g.style.justifyContent="center";body=[g,txRow()]}
     else body=[txRow()];
-    const nm=F("appx.pre.name","[Process Name, e.g. Mood Design / 2D Layout Sketch / 3D Sketch / White-boxing]",{inline:true});
-    const sel=isEdit()?h("select",{class:"ctl walkcat","data-act":"pre-n","aria-label":"Number of images"},[[1,"1 image"],[3,"3 images"],[9,"9 images"],[0,"No images"]].map(([v,t])=>h("option",{value:v,selected:P.n===v},t))):null;
-    const out=[T("h1",SEC.apre),(nm||sel)?h("div",{"data-x":"t","data-s":"h2"},nm,sel):null,
-      lock?T("cap","Locked: the preceding process result cannot change after the initial version."):null,...body];
+    const nm=F(b+".name","[Process Name, e.g. Mood Design / 2D Layout Sketch / 3D Sketch / White-boxing]",{inline:true});
+    const sel=isEdit()?h("select",{class:"ctl walkcat","data-act":"pre-n","data-id":P.id,"aria-label":"Number of images"},[[1,"1 image"],[3,"3 images"],[9,"9 images"],[0,"No images"]].map(([v,t])=>h("option",{value:v,selected:P.n===v},t))):null;
+    const ctl=ICTL(["pre-ins","+ Add section",P.id],doc.appx.pre.length>1?["pre-rm","Remove",P.id]:null);
+    out.push((nm||sel)?h("div",{"data-x":"t","data-s":"h2"},nm,sel,ctl):null,...body)});
+    const out=[p.first?T("h1",SEC.apre):null,lock&&p.first?T("cap","Locked: the preceding process result cannot change after the initial version."):null,SPLIT(...halves)];
     if(lock)out.forEach(el=>el&&el.classList.add("locked"));return out}
   finally{MODE=pm}};
 const cimg=s=>{if(s)s.classList.add("cimg");return s};
@@ -1392,7 +1399,7 @@ function battleEditor(){
 /* ---------------- render all ---------------- */
 let CURL=null;
 function renderInto(container,mode){
-  const pm=MODE,ph=HIDE;MODE=mode;HIDE=mode==="export"&&EXP.hide;BSC=battleSeries();CHAR_SOLO=new Set();WALK_SOLO=new Set();TBL_BREAKS=newBreaks();
+  const pm=MODE,ph=HIDE;MODE=mode;HIDE=mode==="export"&&EXP.hide;BSC=battleSeries();CHAR_SOLO=new Set();WALK_SOLO=new Set();PRE_SOLO=new Set();TBL_BREAKS=newBreaks();
   // two character rows share a page while they fit; a second row that overflows moves to its own page and the rest reflow.
   // appendix tables start on one page and are broken where the measured rows run out of room.
   TOC_FIT={leg:false,plan:Infinity};let guard=0;for(;;){CURL=layout();const N=CURL.P.length;container.textContent="";
@@ -1402,12 +1409,14 @@ function renderInto(container,mode){
     if(i>=0){CHAR_SOLO.add(CURL.P[i].r0+1);continue}
     const wi=CURL.P.findIndex((p,k)=>p.t==="walk"&&p.items.length>1&&overflows(pgs[k]));
     if(wi>=0){WALK_SOLO.add(CURL.P[wi].items[1].i);continue}
+    const ai=CURL.P.findIndex((p,k)=>p.t==="apre"&&p.items.length>1&&overflows(pgs[k]));
+    if(ai>=0){PRE_SOLO.add(CURL.P[ai].items[1].it.id);continue}
     const j=CURL.P.findIndex((p,k)=>TBL_BREAKS[p.t]&&overflows(pgs[k]));let br=j<0?[]:tableBreaks(pgs[j],CURL.P[j]).filter(x=>!TBL_BREAKS[CURL.P[j].t].has(x));
     // estimate fell short (e.g. cites): the last row joins the next page, which is measured again if it now overflows
     if(j>=0&&!br.length&&CURL.P[j].rows.length>1&&guard++<200){const p=CURL.P[j],S=TBL_BREAKS[p.t],e=p.r0+p.rows.length;br=[e-1];S.delete(e)}
     if(!br.length)break;br.forEach(x=>TBL_BREAKS[CURL.P[j].t].add(x))}
   if(CURL.P[0]&&CURL.P[0].t==="cover")fitCover($(".page",container),CURL.toc);
-  container.paging={chars:CHAR_SOLO,walk:WALK_SOLO,tbl:TBL_BREAKS};MODE=pm;HIDE=ph;
+  container.paging={chars:CHAR_SOLO,walk:WALK_SOLO,pre:PRE_SOLO,tbl:TBL_BREAKS};MODE=pm;HIDE=ph;
   $$(".slot[data-pending]",container).forEach(async s=>{const u=await ensurePreview(s.dataset.img);if(u){s.style.backgroundImage=`url("${u}")`;s.style.backgroundSize=s.dataset.fit;s.removeAttribute("data-pending")}});
   return CURL;
 }
@@ -1424,7 +1433,7 @@ function checkOverflow(){$$("#pages .page").forEach(pg=>{$$(".f[data-fit]",pg).f
 function outline(){const nav=$("#outline");nav.textContent="";CURL.toc.forEach(e=>{const a=h("a",{href:"#pg"+e.p,class:"l"+e.l},h("span",null,`${e.num} ${e.t||e.ph||""}`),h("span",null,String(e.p)));
   a.addEventListener("click",ev=>{ev.preventDefault();const el=$("#pg"+e.p);if(el)$("#view").scrollTo({top:el.offsetTop*(+$("#pages").dataset.z||1)-10,behavior:"smooth"});$("#side").classList.remove("open")});nav.append(a)})}
 function refreshDerived(){
-  if(!CURL||PREVIEW)return;const pm=MODE;MODE="edit";BSC=battleSeries();const pgn=$("#pages").paging;if(pgn){CHAR_SOLO=pgn.chars;WALK_SOLO=pgn.walk||new Set();TBL_BREAKS=pgn.tbl}const L=layout();CURL=L;const old=$("#tocBlock");if(old){TOC_FIT={leg:false,plan:Infinity};old.replaceWith(tocBlock(L.toc));fitCover($("#pg1"),L.toc)}
+  if(!CURL||PREVIEW)return;const pm=MODE;MODE="edit";BSC=battleSeries();const pgn=$("#pages").paging;if(pgn){CHAR_SOLO=pgn.chars;WALK_SOLO=pgn.walk||new Set();PRE_SOLO=pgn.pre||new Set();TBL_BREAKS=pgn.tbl}const L=layout();CURL=L;const old=$("#tocBlock");if(old){TOC_FIT={leg:false,plan:Infinity};old.replaceWith(tocBlock(L.toc));fitCover($("#pg1"),L.toc)}
   const rts=walkRoutes();$$('[id^="beatChart"]').forEach(c=>c.replaceWith(chartSVG(rts[+c.dataset.route]||rts[0],+c.dataset.route)));$$('[id^="battleChart"]').forEach(c=>c.replaceWith(battleChartSVG(+c.dataset.route)));const tl=$("#tlChart");if(tl)tl.replaceWith(timelineSVG());const t=$("#walkTotal");if(t){t.textContent="";t.append(PH(walkTotals(),"[sss]-[sss]"))}MODE=pm;
   outline();status();checkOverflow();
 }
@@ -1551,7 +1560,7 @@ pages.addEventListener("click",e=>{
 pages.addEventListener("dblclick",e=>{const slot=e.target.closest(".slot[data-path][data-img]");if(slot&&!PREVIEW&&!slot.closest(".locked")){e.preventDefault();editImage(slot.dataset.path,slot.dataset.ratio,slot.dataset.fit)}});
 pages.addEventListener("keydown",e=>{const slot=e.target.closest&&e.target.closest(".slot[data-path]");if(slot&&e.target===slot&&(e.key==="Enter"||e.key===" ")){e.preventDefault();pickPath=slot.dataset.path;$("#pick").click()}});
 pages.addEventListener("change",e=>{const s=e.target.closest("select[data-act],input[data-act]");if(!s)return;
-  if(s.dataset.act==="pre-n"){doc.appx.pre.n=+s.value;touched();render()}
+  if(s.dataset.act==="pre-n"){const P=doc.appx.pre.find(x=>x.id===s.dataset.id);if(P){P.n=+s.value;touched();render()}}
   if(s.dataset.act==="rule-g"){const r=doc.appx.guide.find(x=>x.id===s.dataset.id);if(r){r.g=s.checked;doc.appx.guide=sortRules(doc.appx.guide);touched();render()}}
   if(s.dataset.act==="flow-mode"){doc.flow.mode=s.value;autosave();render()}
   if(s.dataset.act==="bg-kind"){doc.ctx.bg[+s.dataset.i].kind=s.value;autosave();render()}
@@ -1574,6 +1583,8 @@ function act(a,id,el){
     case "walk-up":mv(doc.walk,ix(doc.walk),-1);break;
     case "walk-down":mv(doc.walk,ix(doc.walk),1);break;
     case "walk-ins":doc.walk.splice(ix(doc.walk)+1,0,newWalk());break;
+    case "pre-ins":doc.appx.pre.splice(ix(doc.appx.pre)+1,0,newPre());break;
+    case "pre-rm":if(doc.appx.pre.length>1)doc.appx.pre.splice(ix(doc.appx.pre),1);break;
     case "walk-add":doc.walk.push(newWalk());break;
     case "walk-rm":if(doc.walk.length>1)doc.walk.splice(ix(doc.walk),1);break;
     case "walk-row-add":{const w=doc.walk[ix(doc.walk)];w.rows=Math.min(5,(w.rows??2)+1);touched("walk."+w.id+".rows");break}
@@ -1703,7 +1714,7 @@ const HELP=[
   ["Hierarchy","Read top to down: the header lists the names, the cover joins the indices with dots and adds the level index (e.g. 10.5.1)."],
   ["Version number","Ver.Build.Major.Minor-date.total saves; each save picks Minor modify, Major revision or New full build."],
   ["Save revision","Compares the document with the last saved version and logs every change, with its reason and note, to Appendix E (Minor Modify List)."],
-  ["Appendix A","Preceding Process Result: the main output of the previous stage (level art, 2D layout sketch, mood design, 3D sketch, decoration, white-boxing): process name, 1 / 3 / 9 captioned images (filled ones move to the front) and three text blocks. Read-only after the initial version."],
+  ["Appendix A","Preceding Process Result: the main output of the previous stage (level art, 2D layout sketch, mood design, 3D sketch, decoration, white-boxing): one or more sections (+ Add section; two share a page while they fit), each with a process name, 1 / 3 / 9 captioned images (filled ones move to the front) and three text blocks. Read-only after the initial version."],
   ["Appendix B","Project Specification: Item / Spec / Info table; + Image adds a picture to a cell."],
   ["Appendix C","Applied Guidelines: tick Global to list a guideline first with a red index. + Cite takes a web address or BibTeX; cites are listed under the table. Copy global guidelines copies them as CSV; Import CSV reads CSV or TSV from the clipboard."],
   ["Hide empty on export","On: empty fields, images and whole empty sections are left out. Off: every [placeholder] is exported, as a template."],
@@ -1814,7 +1825,7 @@ async function migrate(d){
     if(w.rows==null){w.rows=2;rowsNew.push(`walk.${w.id}.rows`)}});
   if(n.committed&&(d.schema||1)<3){const cur=flat(n);for(const k of Object.keys(n.committed))if(k.startsWith("flow."))delete n.committed[k];
     for(const [k,v] of Object.entries(cur))if(/^(flow\.|#charts|#guide|beats\.|battle\.|#units|#events)/.test(k)||k.endsWith(".cat"))n.committed[k]=v}
-  const x0=newDoc().appx,xd=d.appx||{};n.appx={pre:Object.assign(x0.pre,xd.pre||{}),spec:xd.spec||x0.spec,guide:xd.guide||x0.guide};
+  const x0=newDoc().appx,xd=d.appx||{};n.appx={pre:(Array.isArray(xd.pre)?xd.pre:[xd.pre||{}]).map(p=>Object.assign(newPre(),p)),spec:xd.spec||x0.spec,guide:xd.guide||x0.guide};
   // projects saved before the appendices existed start tracking them from what they hold now
   if(n.committed&&!n.committed["#spec"]){const cur=flat(n);for(const [k,v] of Object.entries(cur))if(/^(appx\.|#spec|#rules)/.test(k))n.committed[k]=v}
   // one World Setting (text beside six images) becomes a Text block and a Picture block; their recorded values follow them
